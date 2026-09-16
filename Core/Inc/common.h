@@ -13,7 +13,8 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-#define COMMAND_MAX_SIZE 2048
+#define COMMAND_MAX_SIZE 2080
+#define DATA_MAX_SIZE 2048
 
 #ifndef FW_VERSION
 #define FW_VERSION "unknown"
@@ -66,6 +67,7 @@ typedef enum {
 	OW_CMD_ECHO = 0x03,
 	OW_CMD_TOGGLE_LED = 0x04,
 	OW_CMD_HWID = 0x05,
+	OW_CMD_USR_CFG = 0x0A,
 	OW_CMD_DFU = 0x0D,
 	OW_CMD_NOP = 0x0E,
 	OW_CMD_RESET = 0x0F,

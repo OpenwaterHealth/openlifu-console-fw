@@ -24,6 +24,7 @@
 /* USER CODE BEGIN INCLUDE */
 #include "main.h"
 #include "uart_comms.h"
+#include "dbg_print.h"
 #include "usb_events.h"
 
 /* USER CODE END INCLUDE */
@@ -400,10 +401,10 @@ void CDC_Idle_Timer_Handler()
 	HAL_TIM_Base_Stop_IT(&CDC_TIMER);
 
 	if(pRX){
-		// printf("CDC_handle_RxCpltCallback %d \r\n", rxIndex);
+		// DBG_PRINTF("CDC_handle_RxCpltCallback %d \r\n", rxIndex);
 		CDC_handle_RxCpltCallback(rxIndex);
 	}else{
-		printf("RX EMPTY\r\n");
+		DBG_PRINTF("RX EMPTY\r\n");
 		CDC_handle_RxCpltCallback(0);
 	}
 

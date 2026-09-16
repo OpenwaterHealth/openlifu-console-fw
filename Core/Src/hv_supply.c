@@ -10,6 +10,7 @@
 #include "utils.h"
 #include "hv_calibration_coeffs.h"
 #include "usb_events.h"
+#include "dbg_print.h"
 #include <stdio.h>
 #include <stdbool.h>
 
@@ -100,7 +101,7 @@ bool hv_set_voltage(float value) {
 	current_hvp_val = pos_voltage_to_dac(value);
 	current_hvm_val = neg_voltage_to_dac(-1*value);
 
-	//printf("Set voltage %f POS: 0x%04X  NEG: 0x%04X\r\n", value, current_hvp_val, current_hvm_val);
+	//DBG_PRINTF("Set voltage %f POS: 0x%04X  NEG: 0x%04X\r\n", value, current_hvp_val, current_hvm_val);
 
 	// turn HV OFF
     // HAL_GPIO_WritePin(HV_ON_GPIO_Port, HV_ON_Pin, GPIO_PIN_SET);
@@ -142,16 +143,16 @@ void set_current_dac(void)
 
 void HV_Enable(void) {
     if (!usb_is_port_open()) {
-        printf("HV Enable BLOCKED: USB port not open\r\n");
+        DBG_PRINTF("HV Enable BLOCKED: USB port not open\r\n");
         return;
     }
-    printf("HV Enable: Ramping to HVP: 0x%04X HVM: 0x%04X\r\n", current_hvp_val, current_hvm_val);
+    DBG_PRINTF("HV Enable: Ramping to HVP: 0x%04X HVM: 0x%04X\r\n", current_hvp_val, current_hvm_val);
     uint16_t step_hvp = current_hvp_val / STEP_SIZE;
     uint16_t step_hvm = current_hvm_val / STEP_SIZE;
     uint16_t hvp_value = 0;
     uint16_t hvm_value = 0;
     
-    printf("Steps HVP: %d Steps HVM: %d\r\n", step_hvp, step_hvm);
+    DBG_PRINTF("Steps HVP: %d Steps HVM: %d\r\n", step_hvp, step_hvm);
 
 	HV_SetDACValue(DAC_CHANNEL_HVP, DAC_BIT_12, hvp_value);
     HV_SetDACValue(DAC_CHANNEL_HVM, DAC_BIT_12, hvm_value);
@@ -201,7 +202,7 @@ static void hv_usb_event_cb(usb_event_t event)
 {
     (void)event;
     if (getHVOnStatus()) {
-        printf("HV interlock: USB lost — disabling HV\r\n");
+        DBG_PRINTF("HV interlock: USB lost — disabling HV\r\n");
         HV_Disable();
     }
 }
@@ -331,15 +332,16 @@ void read_all_adc_channels(ADS8678__HandleTypeDef *adc, ADC_ChannelData_t *outpu
             voltages[i] = 0.0f;
             converted[i] = 0.0f;
             if (output == NULL) {
-                printf("Error reading channel %d\r\n", i);
+                DBG_PRINTF("Error reading channel %d\r\n", i);
             }
         }
     }
 
     // If output pointer is NULL, print to console
     if (output == NULL) {
-        // Channel names (only needed for printing)
-        const char* channel_names[8] = {
+        // Channel names (only needed for printing; unused when DBG_PRINTF
+        // is compiled out)
+        const char* channel_names[8] __attribute__((unused)) = {
             "HVP_1",
             "HVP_2",
             "HVM_1",
@@ -349,12 +351,12 @@ void read_all_adc_channels(ADS8678__HandleTypeDef *adc, ADC_ChannelData_t *outpu
             "VCON-B1",
             "VCON-C1"
         };
-        printf("\r\n=== ADC Channel Readings ===\r\n");
+        DBG_PRINTF("\r\n=== ADC Channel Readings ===\r\n");
         for (int i = 0; i < 8; i++) {
-            printf("Channel %d (%s): %u (0x%04X) = %.3fV REAL: %.3fV \r\n",
+            DBG_PRINTF("Channel %d (%s): %u (0x%04X) = %.3fV REAL: %.3fV \r\n",
                    i, channel_names[i], adc_values[i], adc_values[i], voltages[i], converted[i]);
         }
-        printf("=============================\r\n\r\n");
+        DBG_PRINTF("=============================\r\n\r\n");
     } else {
         // If output pointer is provided, copy data to it
         for (int i = 0; i < 8; i++) {

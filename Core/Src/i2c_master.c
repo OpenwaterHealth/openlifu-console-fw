@@ -5,6 +5,7 @@
  *      Author: gvigelet
  */
 #include "i2c_master.h"
+#include "dbg_print.h"
 #include <stdio.h>
 #include <stdbool.h>
 #include <string.h>
@@ -27,14 +28,14 @@ void I2C_scan(I2C_HandleTypeDef *hi2c)
         if (status == HAL_OK) {
             found_addresses[found_address_count] = address;
             found_address_count++;
-        	printf("%2x ", address);
+        	DBG_PRINTF("%2x ", address);
         }else{
-        	printf("-- ");
+        	DBG_PRINTF("-- ");
         }
-        if (address > 0 && (address + 1) % 16 == 0) printf("\r\n");
+        if (address > 0 && (address + 1) % 16 == 0) DBG_PRINTF("\r\n");
     }
 
-    printf("\r\n\r\n");
+    DBG_PRINTF("\r\n\r\n");
     fflush(stdout);
 
 }

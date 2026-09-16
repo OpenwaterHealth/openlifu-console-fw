@@ -6,6 +6,7 @@
  */
 
 #include "utils.h"
+#include "dbg_print.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -31,12 +32,12 @@ uint8_t crc_test(){
 	  // Measure CPU CRC calculation time
 	  startTime = __HAL_TIM_GET_COUNTER(&htim3);
 
-	  printf("CRC Test\r\n");
+	  DBG_PRINTF("CRC Test\r\n");
 	  uint16_t cpu_CRC = util_crc16((uint8_t*)CRC16_DATA8, BUFFER_SIZE);
 
 	  endTime = __HAL_TIM_GET_COUNTER(&htim3);
 	  duration = endTime - startTime;
-	  printf("CPU CRC: 0x%04x Duration: %lu us\r\n\r\n", cpu_CRC, (unsigned long)duration);
+	  DBG_PRINTF("CPU CRC: 0x%04x Duration: %lu us\r\n\r\n", cpu_CRC, (unsigned long)duration);
 
 
 	  // Reset Counter if needed
@@ -48,7 +49,7 @@ uint8_t crc_test(){
 	  uint16_t hw_CRC = util_hw_crc16((uint8_t*)CRC16_DATA8, BUFFER_SIZE);
 	  endTime = __HAL_TIM_GET_COUNTER(&htim3);
 	  duration = endTime - startTime;
-	  printf("HW CRC: 0x%04x Duration: %lu us\r\n\r\n", hw_CRC, (unsigned long)duration);
+	  DBG_PRINTF("HW CRC: 0x%04x Duration: %lu us\r\n\r\n", hw_CRC, (unsigned long)duration);
 
 	  return cpu_CRC == hw_CRC?0:1;
 }
@@ -91,11 +92,11 @@ const uint16_t crc16_tab[256] = {
 
 
 void printBuffer(const uint8_t* buffer, uint32_t size) {
-	printf("\r\nBuffer\r\n\r\n");
+	DBG_PRINTF("\r\nBuffer\r\n\r\n");
     for (uint32_t i = 0; i < size; i++) {
-        printf("%02X ", buffer[i]); // Print each byte in hexadecimal format
+        DBG_PRINTF("%02X ", buffer[i]); // Print each byte in hexadecimal format
     }
-    printf("\r\n\r\n"); // Print a newline character to separate the output
+    DBG_PRINTF("\r\n\r\n"); // Print a newline character to separate the output
 }
 
 uint16_t util_crc16(const uint8_t* buf, uint32_t size) {
@@ -112,7 +113,7 @@ uint16_t util_crc16(const uint8_t* buf, uint32_t size) {
 uint16_t util_hw_crc16(uint8_t* buf, uint32_t size)
 {
 	uint32_t uwCRCValue = HAL_CRC_Accumulate(&hcrc, (uint32_t *)buf, size);
-	printf("uwCRCValue 0x%08lx\r\n", (unsigned long)uwCRCValue);
+	DBG_PRINTF("uwCRCValue 0x%08lx\r\n", (unsigned long)uwCRCValue);
 	return (uint16_t)uwCRCValue;
 }
 
