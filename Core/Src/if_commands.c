@@ -295,49 +295,58 @@ static void POWER_ProcessCommand(UartPacket *uartResp, UartPacket cmd)
 
 			break;
 		case OW_CMD_USR_CFG:
-			// reserved == 0: READ  -> [16-byte wire header][json]
-			// reserved == 1: WRITE -> cmd.data is [header][json] or raw JSON,
-			//                         ACK carries just the updated header back
+            // reserved == 0: READ
+            // reserved == 1: WRITE (cmd.data is JSON text)
+			uartResp->id = cmd.id;
 			uartResp->command = OW_CMD_USR_CFG;
-			uartResp->addr = cmd.addr;
-			uartResp->reserved = cmd.reserved;
-			{
-				const uint8_t *wire_buf = NULL;
-				uint16_t wire_len = 0;
+            if (cmd.reserved == 0) {
+                const uint8_t *wire_buf = NULL;
+                uint16_t wire_len = 0;
+                const uint16_t max_payload = (uint16_t)(DATA_MAX_SIZE);
+                if (lifu_cfg_wire_read(&wire_buf, &wire_len, max_payload) != HAL_OK || wire_buf == NULL) {
+                    uartResp->packet_type = OW_ERROR;
+                    uartResp->data_len = 0;
+                    uartResp->data = NULL;
+                    break;
+                }
 
-				if (cmd.reserved > 1 ||
-				    (cmd.reserved == 1 && (cmd.data == NULL || cmd.data_len == 0)))
-				{
-					uartResp->packet_type = OW_ERROR;
-					uartResp->data_len = 0;
-					uartResp->data = NULL;
-					break;
-				}
+                uartResp->data_len = wire_len;
+                uartResp->data = (uint8_t *)wire_buf;
+            }
+            else if (cmd.reserved == 1) {
+                if (cmd.data == NULL || cmd.data_len == 0) {
+                    uartResp->packet_type = OW_ERROR;
+                    uartResp->data_len = 0;
+                    uartResp->data = NULL;
+                    break;
+                }
 
-				if (cmd.reserved == 1 &&
-				    lifu_cfg_wire_write(cmd.data, cmd.data_len) != HAL_OK)
-				{
-					uartResp->packet_type = OW_ERROR;
-					uartResp->data_len = 0;
-					uartResp->data = NULL;
-					break;
-				}
+                if (lifu_cfg_wire_write(cmd.data, cmd.data_len) != HAL_OK) {
+                    uartResp->packet_type = OW_ERROR;
+                    uartResp->data_len = 0;
+                    uartResp->data = NULL;
+                    break;
+                }
 
-				if (lifu_cfg_wire_read(&wire_buf, &wire_len, (uint16_t)DATA_MAX_SIZE) != HAL_OK
-				    || wire_buf == NULL)
-				{
-					uartResp->packet_type = OW_ERROR;
-					uartResp->data_len = 0;
-					uartResp->data = NULL;
-					break;
-				}
-
-				uartResp->data_len = (cmd.reserved == 1)
-				                   ? (uint16_t)sizeof(lifu_cfg_wire_hdr_t)
-				                   : wire_len;
-				uartResp->data = (uint8_t *)wire_buf;
-			}
-			break;
+                // Return the updated header as an ACK payload.
+                const uint8_t *wire_buf = NULL;
+                uint16_t wire_len = 0;
+                const uint16_t max_payload = (uint16_t)(DATA_MAX_SIZE);
+                if (lifu_cfg_wire_read(&wire_buf, &wire_len, max_payload) != HAL_OK || wire_buf == NULL) {
+                    uartResp->packet_type = OW_ERROR;
+                    uartResp->data_len = 0;
+                    uartResp->data = NULL;
+                    break;
+                }
+                uartResp->data_len = (uint16_t)sizeof(lifu_cfg_wire_hdr_t);
+                uartResp->data = (uint8_t *)wire_buf;
+            }
+            else {
+                uartResp->packet_type = OW_ERROR;
+                uartResp->data_len = 0;
+                uartResp->data = NULL;
+            }
+            break;
 		case OW_CMD_NOP:
 			uartResp->command = OW_CMD_NOP;
 			break;
