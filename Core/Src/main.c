@@ -25,6 +25,7 @@
 #include "common.h"
 #include "i2c_master.h"
 #include "logging.h"
+#include "dbg_print.h"
 #include "lifu_config.h"
 #include "usbd_cdc_if.h"
 #include "uart_comms.h"
@@ -208,15 +209,15 @@ int main(void)
 
   US_Delay_Init();
 
-  init_dma_logging();
-  printf("\033c");
-  printf("Open-LIFU Console Controller\r\n\r\n");
-  printf("FW: %s (%s)\r\nDate: %s\r\n",
+  DBG_LOG_INIT();
+  DBG_PRINTF("\033c");
+  DBG_PRINTF("Open-LIFU Console Controller\r\n\r\n");
+  DBG_PRINTF("FW: %s (%s)\r\nDate: %s\r\n",
        FW_VERSION_STRING,
        FW_SHA_STRING,
        FW_BUILD_TIME_STRING);
 
-  printf("CPU Clock Frequency: %lu MHz\r\n", HAL_RCC_GetSysClockFreq() / 1000000);
+  DBG_PRINTF("CPU Clock Frequency: %lu MHz\r\n", HAL_RCC_GetSysClockFreq() / 1000000);
 
   // Initialize RGB LED
   RGB_Init();
@@ -230,11 +231,7 @@ int main(void)
 
   cfg = (lifu_cfg_t *)lifu_cfg_get();
 
-  // If the number was negative, make sure the sign is only on the whole part
-  printf("hv_settng=%d hv_enabled=%u auto_on=%u json=%s seq=%lu\r\n",
-		  cfg->hv_settng,
-         cfg->hv_enabled,
-         cfg->auto_on,
+  DBG_PRINTF("json=%s seq=%lu\r\n",
          cfg->json,
          (unsigned long)cfg->seq);
 
@@ -259,15 +256,15 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  printf("\r\nController initialize and running\r\n");
+  DBG_PRINTF("\r\nController initialize and running\r\n");
   HAL_GPIO_WritePin(SYS_RDY_GPIO_Port, SYS_RDY_Pin, GPIO_PIN_RESET);
   HAL_GPIO_WritePin(HB_LED_GPIO_Port, HB_LED_Pin, GPIO_PIN_SET);
 
 
-  //printf("I2C1 \r\n");
+  //DBG_PRINTF("I2C1 \r\n");
   //I2C_scan(&hi2c1);  // 0x49
 
-  // printf("I2C2 \r\n");
+  // DBG_PRINTF("I2C2 \r\n");
   // I2C_scan(&hi2c2);  // 0x6D
 
   vmon_adc.spi = &hspi1;
@@ -279,7 +276,7 @@ int main(void)
 
   HAL_Delay(150);
 
-  printf("\r\nTurning 12V on\r\n");
+  DBG_PRINTF("\r\nTurning 12V on\r\n");
   HAL_GPIO_WritePin(V12_ENABLE_GPIO_Port, V12_ENABLE_Pin, GPIO_PIN_SET);
 
   HAL_Delay(150);
@@ -290,12 +287,12 @@ int main(void)
   uint8_t fan_btm_dev_id = FAN_ReadDeviceID(&fan[0]);
   uint8_t fan_btm_mfg_id = FAN_ReadManufacturerID(&fan[0]);
   if(fan_btm_dev_id != MAX6663_DEVICE_ID && fan_btm_mfg_id != MAX6663_MAN_ID) {
-	  printf("Failed to initialize Top Fan IC\r\n");
+	  DBG_PRINTF("Failed to initialize Top Fan IC\r\n");
   } else {
-	  printf("Bottom Fan MAX6663 Device ID: 0x%02X, Manufacturer ID: 0x%02X\r\n", fan_btm_dev_id, fan_btm_mfg_id);
+	  DBG_PRINTF("Bottom Fan MAX6663 Device ID: 0x%02X, Manufacturer ID: 0x%02X\r\n", fan_btm_dev_id, fan_btm_mfg_id);
 
 	  if(!FAN_EnableMonitoring(&fan[0])){
-		  printf("Failed to enable fan monitoring\r\n");
+		  DBG_PRINTF("Failed to enable fan monitoring\r\n");
 	  }
 
 	  FAN_SetManualPWM(&fan[0], 0);
@@ -307,12 +304,12 @@ int main(void)
   uint8_t fan_top_dev_id = FAN_ReadDeviceID(&fan[1]);
   uint8_t fan_top_mfg_id = FAN_ReadManufacturerID(&fan[1]);
   if(fan_top_dev_id != MAX6663_DEVICE_ID && fan_top_mfg_id != MAX6663_MAN_ID) {
-	  printf("Failed to initialize Top Fan IC\r\n");
+	  DBG_PRINTF("Failed to initialize Top Fan IC\r\n");
   } else {
-	  printf("Top Fan MAX6663 Device ID: 0x%02X, Manufacturer ID: 0x%02X\r\n", fan_top_dev_id, fan_top_mfg_id);
+	  DBG_PRINTF("Top Fan MAX6663 Device ID: 0x%02X, Manufacturer ID: 0x%02X\r\n", fan_top_dev_id, fan_top_mfg_id);
 
 	  if(!FAN_EnableMonitoring(&fan[1])){
-		  printf("Failed to enable fan monitoring\r\n");
+		  DBG_PRINTF("Failed to enable fan monitoring\r\n");
 	  }
 
 	  FAN_SetManualPWM(&fan[1], 0);
@@ -320,14 +317,14 @@ int main(void)
 
   // Initialize the ADS8678 ADC
   if (ADS8678_Init(&vmon_adc) == HAL_OK) {
-      printf("ADS8678 initialized successfully\r\n");
+      DBG_PRINTF("ADS8678 initialized successfully\r\n");
       HAL_Delay(100);
       // Read all ADC channels and display voltages
       read_all_adc_channels(&vmon_adc, NULL);
 
 
   } else {
-      printf("Failed to initialize ADS8678\r\n");
+      DBG_PRINTF("Failed to initialize ADS8678\r\n");
   }
 
   if(HAL_TIM_Base_Start_IT(&htim1) != HAL_OK){
@@ -1092,7 +1089,7 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
 {
 	if(huart->Instance == USART3)
 	{
-		logging_UART_TxCpltCallback(huart);
+		DBG_LOG_TXCPLT(huart);
 	}
 }
 
@@ -1194,7 +1191,7 @@ void assert_failed(uint8_t *file, uint32_t line)
 {
   /* USER CODE BEGIN 6 */
   /* User can add his own implementation to report the file name and line number,
-     ex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
+     ex: DBG_PRINTF("Wrong parameters value: file %s on line %d\r\n", file, line) */
   /* USER CODE END 6 */
 }
 #endif /* USE_FULL_ASSERT */

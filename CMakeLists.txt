@@ -98,6 +98,16 @@ target_link_options(${CMAKE_PROJECT_NAME} PRIVATE
     -T "${FLASH_LINKER_SCRIPT}"
 )
 
+# Debug console output (USART3). The board brings out no serial header, so
+# printf and the DMA log ring in logging.c are dead weight and are compiled
+# out by default. See Core/Inc/dbg_print.h.
+# Must be set before add_subdirectory() so the CubeMX sources see it too.
+option(ENABLE_DEBUG_PRINT "Emit USART3 debug output (printf + DMA log ring)" OFF)
+if(ENABLE_DEBUG_PRINT)
+    add_compile_definitions(ENABLE_DEBUG_PRINT)
+endif()
+message(STATUS "Debug print : ${ENABLE_DEBUG_PRINT}")
+
 # Add STM32CubeMX generated sources
 add_subdirectory(cmake/stm32cubemx)
 

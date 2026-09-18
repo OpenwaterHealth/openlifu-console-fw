@@ -8,6 +8,7 @@
 #include "main.h"
 #include "if_commands.h"
 #include "common.h"
+#include "dbg_print.h"
 #include "i2c_master.h"
 #include "hv_supply.h"
 #include "fan_driver.h"
@@ -37,16 +38,16 @@ volatile uint8_t last_btFan_speed = 0;
 volatile uint8_t last_tpFan_speed = 0;
 
 static void print_uart_packet(const UartPacket* packet) {
-    printf("ID: 0x%04X\r\n", packet->id);
-    printf("Packet Type: 0x%02X\r\n", packet->packet_type);
-    printf("Command: 0x%02X\r\n", packet->command);
-    printf("Data Length: %d\r\n", packet->data_len);
-    printf("CRC: 0x%04X\r\n", packet->crc);
-    printf("Data: ");
+    DBG_PRINTF("ID: 0x%04X\r\n", packet->id);
+    DBG_PRINTF("Packet Type: 0x%02X\r\n", packet->packet_type);
+    DBG_PRINTF("Command: 0x%02X\r\n", packet->command);
+    DBG_PRINTF("Data Length: %d\r\n", packet->data_len);
+    DBG_PRINTF("CRC: 0x%04X\r\n", packet->crc);
+    DBG_PRINTF("Data: ");
     for (int i = 0; i < packet->data_len; i++) {
-        printf("0x%02X ", packet->data[i]);
+        DBG_PRINTF("0x%02X ", packet->data[i]);
     }
-    printf("\r\n");
+    DBG_PRINTF("\r\n");
 }
 
 /* Parse and apply an OW_POWER_SET_RGB_FX payload (layout in common.h).
@@ -205,7 +206,7 @@ static void POWER_ProcessCommand(UartPacket *uartResp, UartPacket cmd)
 		case OW_POWER_GET_TEMP1:
 			// last_temperature1 = 30.0f + (rand() % 41);  // Random float between 30.0 and 70.0
 			last_temperature1 = MAX31875_ReadTemperature(MAX31875_TEMP1_DEV_ADDR);
-			//printf("TEMP1: %d.%02d\r\n", (int)last_temperature1, (((int)last_temperature1 - (int)last_temperature1) * 100));
+			//DBG_PRINTF("TEMP1: %d.%02d\r\n", (int)last_temperature1, (((int)last_temperature1 - (int)last_temperature1) * 100));
 			uartResp->command = OW_POWER_GET_TEMP1;
 			uartResp->data_len = 4;
 			uartResp->data = (uint8_t *)&last_temperature1;
@@ -213,7 +214,7 @@ static void POWER_ProcessCommand(UartPacket *uartResp, UartPacket cmd)
 		case OW_POWER_GET_TEMP2:
 			// last_temperature2 = 30.0f + (rand() % 41);  // Random float between 30.0 and 70.0
 			last_temperature2 = MAX31875_ReadTemperature(MAX31875_TEMP2_DEV_ADDR);
-			//printf("TEMP2: %d.%02d\r\n", (int)last_temperature2, (((int)last_temperature2 - (int)last_temperature2) * 100));
+			//DBG_PRINTF("TEMP2: %d.%02d\r\n", (int)last_temperature2, (((int)last_temperature2 - (int)last_temperature2) * 100));
 			uartResp->command = OW_POWER_GET_TEMP2;
 			uartResp->data_len = 4;
 			uartResp->data = (uint8_t *)&last_temperature2;		
@@ -293,6 +294,59 @@ static void POWER_ProcessCommand(UartPacket *uartResp, UartPacket cmd)
 			}
 
 			break;
+		case OW_CMD_USR_CFG:
+            // reserved == 0: READ
+            // reserved == 1: WRITE (cmd.data is JSON text)
+			uartResp->id = cmd.id;
+			uartResp->command = OW_CMD_USR_CFG;
+            if (cmd.reserved == 0) {
+                const uint8_t *wire_buf = NULL;
+                uint16_t wire_len = 0;
+                const uint16_t max_payload = (uint16_t)(DATA_MAX_SIZE);
+                if (lifu_cfg_wire_read(&wire_buf, &wire_len, max_payload) != HAL_OK || wire_buf == NULL) {
+                    uartResp->packet_type = OW_ERROR;
+                    uartResp->data_len = 0;
+                    uartResp->data = NULL;
+                    break;
+                }
+
+                uartResp->data_len = wire_len;
+                uartResp->data = (uint8_t *)wire_buf;
+            }
+            else if (cmd.reserved == 1) {
+                if (cmd.data == NULL || cmd.data_len == 0) {
+                    uartResp->packet_type = OW_ERROR;
+                    uartResp->data_len = 0;
+                    uartResp->data = NULL;
+                    break;
+                }
+
+                if (lifu_cfg_wire_write(cmd.data, cmd.data_len) != HAL_OK) {
+                    uartResp->packet_type = OW_ERROR;
+                    uartResp->data_len = 0;
+                    uartResp->data = NULL;
+                    break;
+                }
+
+                // Return the updated header as an ACK payload.
+                const uint8_t *wire_buf = NULL;
+                uint16_t wire_len = 0;
+                const uint16_t max_payload = (uint16_t)(DATA_MAX_SIZE);
+                if (lifu_cfg_wire_read(&wire_buf, &wire_len, max_payload) != HAL_OK || wire_buf == NULL) {
+                    uartResp->packet_type = OW_ERROR;
+                    uartResp->data_len = 0;
+                    uartResp->data = NULL;
+                    break;
+                }
+                uartResp->data_len = (uint16_t)sizeof(lifu_cfg_wire_hdr_t);
+                uartResp->data = (uint8_t *)wire_buf;
+            }
+            else {
+                uartResp->packet_type = OW_ERROR;
+                uartResp->data_len = 0;
+                uartResp->data = NULL;
+            }
+            break;
 		case OW_CMD_NOP:
 			uartResp->command = OW_CMD_NOP;
 			break;
@@ -340,9 +394,9 @@ static void POWER_ProcessCommand(UartPacket *uartResp, UartPacket cmd)
 				uint16_t hvm_dac_value = ((uint16_t)cmd.data[4] << 8) | (uint16_t)cmd.data[5];
 
 		        // Debug print
-		        printf("Received HVP DAC Value: %u (0x%04X)\r\n", hvp_dac_value, hvp_dac_value);
+		        DBG_PRINTF("Received HVP DAC Value: %u (0x%04X)\r\n", hvp_dac_value, hvp_dac_value);
 		        set_hvp(hvp_dac_value);
-		        printf("Received HVM DAC Value: %u (0x%04X)\r\n", hvm_dac_value, hvm_dac_value);
+		        DBG_PRINTF("Received HVM DAC Value: %u (0x%04X)\r\n", hvm_dac_value, hvm_dac_value);
 		        set_hvm(hvm_dac_value);
 		        set_use_exact(true);
 			}else{
