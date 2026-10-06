@@ -11,6 +11,7 @@
 #include "dbg_print.h"
 #include "i2c_master.h"
 #include "hv_supply.h"
+#include "hv_presets.h"
 #include "fan_driver.h"
 #include "lifu_config.h"
 #include "rgb.h"
@@ -110,6 +111,11 @@ static int32_t apply_rgb_fx(const UartPacket *cmd)
 
 static void POWER_ProcessCommand(UartPacket *uartResp, UartPacket cmd)
 {
+#ifdef FDA_MODE
+	// The HV setpoint comes from the selected preset (hv_presets.h).
+	if (hv_presets_process(uartResp, &cmd)) return;
+#endif
+
 	switch (cmd.command)
 	{
 		case OW_CMD_PING:

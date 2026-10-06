@@ -55,6 +55,11 @@ typedef enum {
 
 typedef enum {
 	OW_CODE_SUCCESS = 0x00,
+	// FDA mode refusals (hv_presets.c).
+	OW_CODE_PRESET_CRC = 0xF6,   // select's settings_crc is not that preset's
+	OW_CODE_NO_PRESET = 0xF7,    // HV on before any preset was selected
+	OW_CODE_FDA_REFUSED = 0xF8,  // the host may not set the HV setpoint itself
+	                             // (SET_HV, raw DACs), or select while HV is on
 	OW_CODE_IDENT_ERROR = 0xFD,
 	OW_CODE_DATA_ERROR = 0xFE,
 	OW_CODE_ERROR = 0xFF,
@@ -105,6 +110,8 @@ typedef enum {
 	OW_POWER_RAW_DAC = 0x41,
 	OW_POWER_HV_ENABLE = 0x42,
 	OW_POWER_SET_RGB_FX = 0x43,
+	OW_POWER_PRESET_GET = 0x44,     // FDA mode only: reserved=index -> that preset's HV entry
+	OW_POWER_PRESET_SELECT = 0x45,  // FDA mode only: reserved=index, data=settings_crc u32 LE
 } UstxPowerCommands;
 
 /* OW_POWER_SET_RGB_FX payload (cmd.data, little-endian):

@@ -39,6 +39,28 @@
                 "CMAKE_BUILD_TYPE": "Release",
                 "BARE_METAL": "ON"
             }
+        },
+        {
+            "name": "Debug-FDA",
+            "inherits": "default",
+            "displayName": "Debug (FDA mode)",
+            "description": "Debug FDA build, bare metal like the transmitter's: the HV voltage comes from the selected preset, not the host.",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "BARE_METAL": "ON",
+                "FDA_MODE": "ON"
+            }
+        },
+        {
+            "name": "Release-FDA",
+            "inherits": "default",
+            "displayName": "Release (FDA mode)",
+            "description": "Release FDA build, bare metal like the transmitter's: the HV voltage comes from the selected preset, not the host.",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "BARE_METAL": "ON",
+                "FDA_MODE": "ON"
+            }
         }
     ],
     "buildPresets": [
@@ -57,6 +79,14 @@
         {
             "name": "Release-BareMetal",
             "configurePreset": "Release-BareMetal"
+        },
+        {
+            "name": "Debug-FDA",
+            "configurePreset": "Debug-FDA"
+        },
+        {
+            "name": "Release-FDA",
+            "configurePreset": "Release-FDA"
         }
     ]
 }
