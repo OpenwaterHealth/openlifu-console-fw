@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: AGPL-3.0-or-later */
 /* Auto-generated High Voltage Calibration Functions */
 #include "hv_calibration_coeffs.h"
 #include <stdint.h>
