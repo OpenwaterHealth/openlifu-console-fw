@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: AGPL-3.0-or-later */
 
 #ifndef INC_FAN_DRIVER_H_
 #define INC_FAN_DRIVER_H_
