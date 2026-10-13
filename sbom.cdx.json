@@ -24,7 +24,7 @@
       "version": "bde7787",
       "description": "Openwater LIFU console application firmware for STM32F072 (Console Power PCB): HV supply control and calibration, fan/temperature/RGB peripherals, JSON command interface over USB CDC and UART, DFU-mode jump to the SBSFU bootloader.",
       "publisher": "Openwater",
-      "licenses": [ { "license": { "id": "AGPL-3.0-only" } } ],
+      "licenses": [ { "license": { "id": "AGPL-3.0-or-later" } } ],
       "properties": [
         { "name": "openwater:version-source", "value": "git describe (injected at build time as FW_VERSION)" },
         { "name": "openwater:mcu", "value": "STM32F072RBHx (Arm Cortex-M0)" }

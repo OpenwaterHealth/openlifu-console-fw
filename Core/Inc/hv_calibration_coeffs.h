@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: AGPL-3.0-or-later */
 /* Auto-generated High Voltage Calibration Coefficients */
 #ifndef HV_CALIBRATION_COEFFS_H
 #define HV_CALIBRATION_COEFFS_H
