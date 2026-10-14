@@ -53,6 +53,10 @@
 #define BL_BKP_REQ_DFU_MAGIC       (0x21554644U) /* 'DFU!' -> Open-LIFU bootloader DFU */
 #define BL_BKP_REQ_STM32_DFU_MAGIC (0x53554644U) /* 'DFUS' -> STM32 system bootloader */
 
+/* How long USB_RESET is held before resetting into a bootloader DFU; matches
+ * the hub reset the application does at boot. */
+#define USB_HUB_RESET_HOLD_US      (100000U)
+
 static void bl_bkp_enable(void)
 {
 	__HAL_RCC_PWR_CLK_ENABLE();
@@ -1154,8 +1158,23 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
       MX_USB_DEVICE_DeInit();
 
       __DSB();
-      __ISB();   
-      delay_ms(200);
+      __ISB();
+      if(_enter_dfu){
+        // Hand the bootloader a freshly reset USB2514 hub. With no transmitter
+        // attached this MCU is the hub's only downstream device, so once it
+        // detaches the host may selectively suspend the hub. The bootloader's
+        // own USB_RESET pulse is only a few microseconds: it resets the hub's
+        // internal state without the host seeing a disconnect, and the
+        // suspended hub then never reports the DFU device (open-lifu-console-bl#2).
+        // A real reset makes the hub re-attach upstream; the host debounces
+        // that for >= 100 ms before enumerating, which covers the bootloader's
+        // start-up, so reset straight after releasing it.
+        HAL_GPIO_WritePin(USB_RESET_GPIO_Port, USB_RESET_Pin, GPIO_PIN_RESET);
+        delay_us(USB_HUB_RESET_HOLD_US);
+        HAL_GPIO_WritePin(USB_RESET_GPIO_Port, USB_RESET_Pin, GPIO_PIN_SET);
+      } else {
+        delay_ms(200);
+      }
 
 	  // Reset the board
 	  NVIC_SystemReset();
