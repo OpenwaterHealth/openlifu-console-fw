@@ -7,6 +7,10 @@ on:
         description: "open-lifu-console-bl release tag to bundle into the production image (default: latest)"
         required: false
         default: "latest"
+      sign_version:
+        description: "Semver to sign the slot image as, e.g. 1.2.6 (bench builds of feature branches; default: derived from the ref)"
+        required: false
+        default: ""
   push:
     branches: [ "main", "next" ]
     tags:
@@ -78,7 +82,21 @@ jobs:
       # ---------------------------
       - name: Resolve signing version string
         id: fwver
+        env:
+          SIGN_VERSION: ${{ github.event.inputs.sign_version }}
         run: |
+          # An explicit workflow_dispatch sign_version wins (bench builds of
+          # feature branches, which would otherwise sign as 0.0.1 and be refused
+          # by units with a higher anti-rollback floor).
+          if [ -n "$SIGN_VERSION" ]; then
+            if ! [[ "$SIGN_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$ ]]; then
+              echo "::error::sign_version '$SIGN_VERSION' is not X.Y.Z or X.Y.Z-rc.N" >&2
+              exit 1
+            fi
+            echo "verstr=$SIGN_VERSION" >> "$GITHUB_OUTPUT"
+            echo "Signing version (semver): $SIGN_VERSION (workflow_dispatch input)"
+            exit 0
+          fi
           # Tag build -> that tag. Branch builds derive the version from the
           # newest matching tag so the image is installable on units at that
           # anti-rollback floor (instead of always signing as 0.0.1):
