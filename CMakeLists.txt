@@ -134,6 +134,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Core/Src/logging.c
     Core/Src/lwrb.c
     Core/Src/max31875.c
+    Core/Src/odometer.c
     Core/Src/rgb.c
     Core/Src/uart_comms.c
     Core/Src/utils.c
