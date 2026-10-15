@@ -5,34 +5,13 @@
 
 #include "hv_presets.h"
 
-#define PRESET_HV_COUNT 23u
+#define PRESET_HV_COUNT 1u
 
-// One HV setpoint per preset, indexed exactly as the transmitter image's
-// preset_table: OW_POWER_PRESET_SELECT N applies entry N's voltage.
+// Each preset's HV voltage and the transmitter sensitivity it suits, indexed
+// exactly as the transmitter image's preset_table: OW_POWER_PRESET_SELECT N
+// applies entry N's voltage, rescaled to the connected transmitter.
 static const HvPreset hv_preset_table[PRESET_HV_COUNT] = {
-	{ "canine_10.0mm", 45.6619301f, 0xf5949f90u },
-	{ "canine_10.0mm_rastered", 47.6699753f, 0x52df75beu },
-	{ "canine_15.0mm", 34.9873009f, 0x1b4b088du },
-	{ "canine_15.0mm_rastered", 32.3885994f, 0xd463873au },
-	{ "canine_20.0mm", 27.8875408f, 0x9d1cbfecu },
-	{ "canine_20.0mm_rastered", 26.0113316f, 0x84cfff09u },
-	{ "canine_25.0mm", 21.1798286f, 0x573ccb15u },
-	{ "canine_25.0mm_rastered", 19.7690544f, 0xdb5accecu },
-	{ "canine_30.0mm", 17.9925251f, 0xd1882908u },
-	{ "canine_30.0mm_rastered", 17.3451576f, 0x842bd780u },
-	{ "canine_35.0mm", 16.9659996f, 0x645b67f4u },
-	{ "canine_35.0mm_rastered", 17.6575603f, 0xe8ecfca2u },
-	{ "canine_40.0mm", 17.4137325f, 0xd98ce529u },
-	{ "canine_40.0mm_rastered", 19.3271179f, 0xc3ca2251u },
-	{ "canine_45.0mm", 18.5598507f, 0x3e1fc093u },
-	{ "canine_45.0mm_rastered", 20.2884274f, 0xfb74ac34u },
-	{ "canine_50.0mm", 19.43853f, 0xb50f2b36u },
-	{ "canine_50.0mm_rastered", 24.9391232f, 0x6f5cb977u },
-	{ "canine_55.0mm", 24.3025208f, 0x3ba62523u },
-	{ "canine_55.0mm_rastered", 25.2606926f, 0x8ac3578cu },
-	{ "canine_60.0mm", 25.4375114f, 0x8203696eu },
-	{ "canine_60.0mm_rastered", 24.4557228f, 0xbd5fa4d4u },
-	{ "gorilla_110mm_rastered", 22.7854519f, 0xdbc8e18bu },
+	{ "diathermy_34ele_40V_50pct_25mm", 40.0f, 3728.0f, 0xbed998deu },
 };
 
 #endif  // PRESET_HV_TABLE_H_

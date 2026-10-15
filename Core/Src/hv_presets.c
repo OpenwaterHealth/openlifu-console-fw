@@ -4,12 +4,18 @@
 
 #include "hv_supply.h"
 
+#include <float.h>
 #include <string.h>
 
 #include "presets/preset_hv_table.h"
 
+_Static_assert(FDA_HV_MIN_VOLTS > 0.0f && FDA_HV_MIN_VOLTS <= FDA_HV_MAX_VOLTS,
+               "the FDA voltage window is empty");
+
 // Index of the preset whose voltage is applied; none until the host selects one.
 static uint8_t selected = HV_PRESET_NONE;
+// The voltage that select arrived at: the preset's, rescaled to the transmitter.
+static float applied = 0.0f;
 
 static void refuse(UartPacket *uartResp, uint8_t code, const char *why)
 {
@@ -29,8 +35,12 @@ static void put_u32(uint8_t *p, uint32_t v)
 static void preset_get(UartPacket *uartResp, const UartPacket *cmd)
 {
 	// [0] count [1] index [2] selected index (0xFF: none)
-	// [3..6] settings_crc  [7..10] voltage f32  [11] id_len [12..] id   (all LE)
-	static uint8_t reply[12U + HV_PRESET_ID_MAX];
+	// [3..6] settings_crc  [7..10] voltage  [11..14] sensitivity
+	// [15..18] voltage applied by the last select (0: none)
+	// [19..22] lowest, [23..26] highest voltage a select may arrive at
+	// [27] id_len [28..] id                          (all LE, voltages f32)
+	static uint8_t reply[28U + HV_PRESET_ID_MAX];
+	static const float window[2] = { FDA_HV_MIN_VOLTS, FDA_HV_MAX_VOLTS };
 
 	if (cmd->reserved >= PRESET_HV_COUNT) {
 		refuse(uartResp, OW_CODE_DATA_ERROR, "no such preset");
@@ -45,16 +55,32 @@ static void preset_get(UartPacket *uartResp, const UartPacket *cmd)
 	reply[2] = selected;
 	put_u32(&reply[3], p->settings_crc);
 	memcpy(&reply[7], &p->voltage, 4);
-	reply[11] = (uint8_t)id_len;
-	memcpy(&reply[12], p->id, id_len);
+	memcpy(&reply[11], &p->sensitivity, 4);
+	memcpy(&reply[15], &applied, 4);
+	memcpy(&reply[19], window, 8);
+	reply[27] = (uint8_t)id_len;
+	memcpy(&reply[28], p->id, id_len);
 	uartResp->data = reply;
-	uartResp->data_len = (uint16_t)(12U + id_len);
+	uartResp->data_len = (uint16_t)(28U + id_len);
 }
 
 static void preset_select(UartPacket *uartResp, const UartPacket *cmd)
 {
-	if (cmd->data == NULL || cmd->data_len != 4U || cmd->reserved >= PRESET_HV_COUNT) {
-		refuse(uartResp, OW_CODE_DATA_ERROR, "need a preset index and its settings_crc");
+	// A new setpoint, or none, under a live rail would change the output
+	// mid-sonication, so what is selected stays as it is.
+	if (getHVOnStatus()) {
+		refuse(uartResp, OW_CODE_FDA_REFUSED, "HV is on; turn it off to select a preset");
+		return;
+	}
+	// Anything short of a select that succeeds leaves nothing selected, so HV
+	// cannot come on for an earlier preset the host no longer matches.
+	selected = HV_PRESET_NONE;
+	applied = 0.0f;
+	// No payload is the host clearing the selection: its transmitter did not load.
+	if (cmd->data_len == 0U) return;
+
+	if (cmd->data == NULL || cmd->data_len != 8U || cmd->reserved >= PRESET_HV_COUNT) {
+		refuse(uartResp, OW_CODE_DATA_ERROR, "need a preset index, its settings_crc and the transmitter sensitivity");
 		return;
 	}
 	uint32_t crc = 0U;
@@ -66,13 +92,24 @@ static void preset_select(UartPacket *uartResp, const UartPacket *cmd)
 		refuse(uartResp, OW_CODE_PRESET_CRC, "settings_crc is not this preset's");
 		return;
 	}
-	// A new setpoint under a live rail would change the output mid-sonication.
-	if (getHVOnStatus()) {
-		refuse(uartResp, OW_CODE_FDA_REFUSED, "HV is on; turn it off to select a preset");
+	float transmitter;
+	memcpy(&transmitter, &cmd->data[4], 4);
+	// Written so a NaN fails it too.
+	if (!(transmitter > 0.0f && transmitter <= FLT_MAX)) {
+		refuse(uartResp, OW_CODE_DATA_ERROR, "transmitter sensitivity must be a positive number");
 		return;
 	}
-	hv_set_voltage(p->voltage);
+	// A less sensitive transmitter needs proportionally more voltage for the same output.
+	float volts = p->voltage * p->sensitivity / transmitter;
+	if (!(volts >= FDA_HV_MIN_VOLTS && volts <= FDA_HV_MAX_VOLTS)) {
+		refuse(uartResp, OW_CODE_HV_RANGE, "the voltage for this transmitter is outside the FDA window");
+		return;
+	}
+	hv_set_voltage(volts);
 	selected = cmd->reserved;
+	applied = volts;
+	uartResp->data = (uint8_t *)&applied;
+	uartResp->data_len = (uint16_t)sizeof(applied);
 }
 
 // Which commands this module answers; the rest go to normal processing untouched.
