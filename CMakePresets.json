@@ -44,10 +44,9 @@
             "name": "Debug-FDA",
             "inherits": "default",
             "displayName": "Debug (FDA mode)",
-            "description": "Debug FDA build, bare metal like the transmitter's: the HV voltage comes from the selected preset, not the host.",
+            "description": "Debug FDA build: the one preset's HV entry is linked in at the end of the application slot (page 61, Core/Inc/presets/fda_preset.h from the SDK's generate_presets.py); the HV voltage comes from it, not the host.",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Debug",
-                "BARE_METAL": "ON",
                 "FDA_MODE": "ON"
             }
         },
@@ -55,7 +54,17 @@
             "name": "Release-FDA",
             "inherits": "default",
             "displayName": "Release (FDA mode)",
-            "description": "Release FDA build, bare metal like the transmitter's: the HV voltage comes from the selected preset, not the host.",
+            "description": "Release FDA build: the one preset's HV entry is linked in at the end of the application slot (page 61, Core/Inc/presets/fda_preset.h from the SDK's generate_presets.py); the HV voltage comes from it, not the host.",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "FDA_MODE": "ON"
+            }
+        },
+        {
+            "name": "Release-FDA-BareMetal",
+            "inherits": "default",
+            "displayName": "Release (FDA mode, bare metal)",
+            "description": "Standalone FDA build, no bootloader: FLASH @ 0x08000000, the preset at the same page 61 as under the bootloader. For bench work.",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Release",
                 "BARE_METAL": "ON",
@@ -87,6 +96,10 @@
         {
             "name": "Release-FDA",
             "configurePreset": "Release-FDA"
+        },
+        {
+            "name": "Release-FDA-BareMetal",
+            "configurePreset": "Release-FDA-BareMetal"
         }
     ]
 }

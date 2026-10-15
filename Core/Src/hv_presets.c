@@ -7,15 +7,14 @@
 #include <float.h>
 #include <string.h>
 
-#include "presets/preset_hv_table.h"
-
-_Static_assert(FDA_HV_MIN_VOLTS > 0.0f && FDA_HV_MIN_VOLTS <= FDA_HV_MAX_VOLTS,
-               "the FDA voltage window is empty");
-
-// Index of the preset whose voltage is applied; none until the host selects one.
-static uint8_t selected = HV_PRESET_NONE;
-// The voltage that select arrived at: the preset's, rescaled to the transmitter.
-static float applied = 0.0f;
+// One preset, parsed from a record; id points into it.
+typedef struct {
+	const char *id;
+	uint8_t id_len;
+	uint32_t settings_crc;
+	float voltage;          // V, the preset's own value as float32
+	float sensitivity;      // the transmitter sensitivity that voltage is right for
+} HvPreset;
 
 static void refuse(UartPacket *uartResp, uint8_t code, const char *why)
 {
@@ -23,6 +22,65 @@ static void refuse(UartPacket *uartResp, uint8_t code, const char *why)
 	uartResp->reserved = code;
 	uartResp->data = (uint8_t *)why;
 	uartResp->data_len = (uint16_t)strlen(why);
+}
+
+static uint32_t rd_u32(const uint8_t *p)
+{
+	return (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
+}
+
+// CRC-32/ISO-HDLC (zlib's), a bit at a time: a record is under 100 bytes.
+static uint32_t crc32(const uint8_t *p, uint32_t n)
+{
+	uint32_t crc = 0xFFFFFFFFu;
+	while (n--) {
+		crc ^= *p++;
+		for (int k = 0; k < 8; k++) {
+			crc = (crc >> 1) ^ (0xEDB88320u & (0u - (crc & 1u)));
+		}
+	}
+	return ~crc;
+}
+
+// Written so a NaN fails it too.
+static bool positive(float v)
+{
+	return v > 0.0f && v <= FLT_MAX;
+}
+
+// A PRESET_HV_RECORD (hv_presets.h) within room bytes, whole and with its CRC intact.
+static bool parse_record(const uint8_t *r, uint32_t room, HvPreset *out)
+{
+	if (room < PRESET_HV_HEADER + 4U || memcmp(r, "OWHV", 4U) != 0 || r[4] != PRESET_HV_VERSION) return false;
+	uint8_t id_len = r[5];
+	if (id_len < 1U || id_len > HV_PRESET_ID_MAX) return false;
+	uint32_t len = PRESET_HV_HEADER + id_len;
+	if (room < len + 4U || crc32(r, len) != rd_u32(&r[len])) return false;
+	out->settings_crc = rd_u32(&r[8]);
+	memcpy(&out->voltage, &r[12], 4);
+	memcpy(&out->sensitivity, &r[16], 4);
+	if (!positive(out->voltage) || !positive(out->sensitivity)) return false;
+	out->id = (const char *)&r[PRESET_HV_HEADER];
+	out->id_len = id_len;
+	return true;
+}
+
+_Static_assert(FDA_HV_MIN_VOLTS > 0.0f && FDA_HV_MIN_VOLTS <= FDA_HV_MAX_VOLTS,
+               "the FDA voltage window is empty");
+
+// Whether the preset's voltage is applied: none until the host selects it.
+static uint8_t selected = HV_PRESET_NONE;
+// The voltage that select arrived at: the preset's, rescaled to the transmitter.
+static float applied = 0.0f;
+
+// The one preset, from the SDK. The linker puts it at the start of the
+// FDA_PRESET region; it is read from there, so what runs is what was flashed.
+#include "presets/fda_preset.h"
+extern const uint8_t _sfda_preset[];
+
+static bool stored_preset(HvPreset *out)
+{
+	return parse_record(_sfda_preset, PRESET_HV_RECORD_MAX, out);
 }
 
 static void put_u32(uint8_t *p, uint32_t v)
@@ -41,27 +99,28 @@ static void preset_get(UartPacket *uartResp, const UartPacket *cmd)
 	// [27] id_len [28..] id                          (all LE, voltages f32)
 	static uint8_t reply[28U + HV_PRESET_ID_MAX];
 	static const float window[2] = { FDA_HV_MIN_VOLTS, FDA_HV_MAX_VOLTS };
+	HvPreset p;
 
-	if (cmd->reserved >= PRESET_HV_COUNT) {
+	if (cmd->reserved != 0U) {
 		refuse(uartResp, OW_CODE_DATA_ERROR, "no such preset");
 		return;
 	}
-	const HvPreset *p = &hv_preset_table[cmd->reserved];
-	size_t id_len = strlen(p->id);
-	if (id_len > HV_PRESET_ID_MAX) id_len = HV_PRESET_ID_MAX;
-
-	reply[0] = (uint8_t)PRESET_HV_COUNT;
+	if (!stored_preset(&p)) {
+		refuse(uartResp, OW_CODE_DATA_ERROR, "no preset stored");
+		return;
+	}
+	reply[0] = 1U;
 	reply[1] = cmd->reserved;
 	reply[2] = selected;
-	put_u32(&reply[3], p->settings_crc);
-	memcpy(&reply[7], &p->voltage, 4);
-	memcpy(&reply[11], &p->sensitivity, 4);
+	put_u32(&reply[3], p.settings_crc);
+	memcpy(&reply[7], &p.voltage, 4);
+	memcpy(&reply[11], &p.sensitivity, 4);
 	memcpy(&reply[15], &applied, 4);
 	memcpy(&reply[19], window, 8);
-	reply[27] = (uint8_t)id_len;
-	memcpy(&reply[28], p->id, id_len);
+	reply[27] = p.id_len;
+	memcpy(&reply[28], p.id, p.id_len);
 	uartResp->data = reply;
-	uartResp->data_len = (uint16_t)(28U + id_len);
+	uartResp->data_len = (uint16_t)(28U + p.id_len);
 }
 
 static void preset_select(UartPacket *uartResp, const UartPacket *cmd)
@@ -79,28 +138,27 @@ static void preset_select(UartPacket *uartResp, const UartPacket *cmd)
 	// No payload is the host clearing the selection: its transmitter did not load.
 	if (cmd->data_len == 0U) return;
 
-	if (cmd->data == NULL || cmd->data_len != 8U || cmd->reserved >= PRESET_HV_COUNT) {
-		refuse(uartResp, OW_CODE_DATA_ERROR, "need a preset index, its settings_crc and the transmitter sensitivity");
+	HvPreset p;
+	if (cmd->data == NULL || cmd->data_len != 8U || cmd->reserved != 0U) {
+		refuse(uartResp, OW_CODE_DATA_ERROR, "need preset index 0, its settings_crc and the transmitter sensitivity");
 		return;
 	}
-	uint32_t crc = 0U;
-	for (int i = 0; i < 4; i++) {
-		crc |= (uint32_t)cmd->data[i] << (8 * i);
+	if (!stored_preset(&p)) {
+		refuse(uartResp, OW_CODE_DATA_ERROR, "no preset stored");
+		return;
 	}
-	const HvPreset *p = &hv_preset_table[cmd->reserved];
-	if (crc != p->settings_crc) {
+	if (rd_u32(&cmd->data[0]) != p.settings_crc) {
 		refuse(uartResp, OW_CODE_PRESET_CRC, "settings_crc is not this preset's");
 		return;
 	}
 	float transmitter;
 	memcpy(&transmitter, &cmd->data[4], 4);
-	// Written so a NaN fails it too.
-	if (!(transmitter > 0.0f && transmitter <= FLT_MAX)) {
+	if (!positive(transmitter)) {
 		refuse(uartResp, OW_CODE_DATA_ERROR, "transmitter sensitivity must be a positive number");
 		return;
 	}
 	// A less sensitive transmitter needs proportionally more voltage for the same output.
-	float volts = p->voltage * p->sensitivity / transmitter;
+	float volts = p.voltage * p.sensitivity / transmitter;
 	if (!(volts >= FDA_HV_MIN_VOLTS && volts <= FDA_HV_MAX_VOLTS)) {
 		refuse(uartResp, OW_CODE_HV_RANGE, "the voltage for this transmitter is outside the FDA window");
 		return;
