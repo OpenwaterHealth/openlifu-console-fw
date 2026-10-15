@@ -27,6 +27,7 @@
 #include "logging.h"
 #include "dbg_print.h"
 #include "lifu_config.h"
+#include "odometer.h"
 #include "usbd_cdc_if.h"
 #include "uart_comms.h"
 #include "fan_driver.h"
@@ -228,6 +229,10 @@ int main(void)
   HV_ClearDAC();
 
   HAL_Delay(100);
+
+  // Before the config load: a load that rewrites page 62 restores the
+  // odometer record from RAM, so the persisted totals must be loaded first.
+  Odometer_Init();
 
   cfg = (lifu_cfg_t *)lifu_cfg_get();
 
