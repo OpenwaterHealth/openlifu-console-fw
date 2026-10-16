@@ -86,21 +86,24 @@ add_executable(${CMAKE_PROJECT_NAME})
 #   BARE_METAL=ON            : standalone image at 0x08000000 (no bootloader).
 # An explicit -DFLASH_LINKER_SCRIPT=... still overrides this selection.
 option(BARE_METAL "Build a bare-metal image (no custom bootloader; runs at 0x08000000)" OFF)
-# FDA mode is described below; its scripts put the preset in the slot's last page.
-option(FDA_MODE "The one preset's HV entry, linked in at the end of the application slot" OFF)
+# FDA_MODE (below) also sizes the app and the preset region in the linker script.
+option(FDA_MODE "The preset's HV entry, linked in at page 61" OFF)
 if(NOT DEFINED FLASH_LINKER_SCRIPT)
-    if(FDA_MODE)
-        set(FDA_SUFFIX "_FDA")
-    endif()
     if(BARE_METAL)
-        set(FLASH_LINKER_SCRIPT "${CMAKE_SOURCE_DIR}/STM32F072XX_FLASH${FDA_SUFFIX}.ld")
+        set(FLASH_LINKER_SCRIPT "${CMAKE_SOURCE_DIR}/STM32F072XX_FLASH.ld")
     else()
-        set(FLASH_LINKER_SCRIPT "${CMAKE_SOURCE_DIR}/STM32F072XX_FLASH_BL${FDA_SUFFIX}.ld")
+        set(FLASH_LINKER_SCRIPT "${CMAKE_SOURCE_DIR}/STM32F072XX_FLASH_BL.ld")
     endif()
 endif()
-message(STATUS "Linker script: ${FLASH_LINKER_SCRIPT}")
+if(FDA_MODE)
+    set(FDA_LAYOUT 1)
+else()
+    set(FDA_LAYOUT 0)
+endif()
+message(STATUS "Linker script: ${FLASH_LINKER_SCRIPT} (FDA layout: ${FDA_LAYOUT})")
 target_link_options(${CMAKE_PROJECT_NAME} PRIVATE
     -T "${FLASH_LINKER_SCRIPT}"
+    "-Wl,--defsym=FDA_MODE=${FDA_LAYOUT}"
 )
 
 # Debug console output (USART3). The board brings out no serial header, so
@@ -159,22 +162,17 @@ target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE
 # ---------------------------
 # FDA mode
 # ---------------------------
-# FDA_MODE links the one preset's HV entry -- its voltage, the transmitter
-# sensitivity that voltage suits, its settings_crc -- into the last page of the
-# application slot (page 61), so flashing or updating the image writes it and
-# the firmware only reads it. Its header, Core/Inc/presets/fda_preset.h, comes
-# from the openlifu SDK's examples/generate_presets.py. The host selects the
-# preset and the console applies its voltage, rescaled to the connected
-# transmitter's sensitivity and held to the window in Core/Inc/hv_presets.h.
-# OW_POWER_SET_HV and the raw DAC commands are refused. OFF leaves the image and
-# its behaviour unchanged.
+# FDA_MODE links the preset's HV entry into page 61, the end of the
+# bootloader's slot. Its header, Core/Inc/presets/fda_preset.h, comes from the
+# openlifu SDK's examples/generate_presets.py. The console applies its voltage
+# when the host selects it, and refuses OW_POWER_SET_HV and the raw DAC
+# commands (Core/Inc/hv_presets.h).
 if(FDA_MODE)
     set(FDA_PRESET_HEADER "${CMAKE_SOURCE_DIR}/Core/Inc/presets/fda_preset.h")
     if(NOT EXISTS "${FDA_PRESET_HEADER}")
         message(FATAL_ERROR "FDA_MODE needs ${FDA_PRESET_HEADER}: generate it with the openlifu SDK's "
                             "examples/generate_presets.py.")
     endif()
-    target_sources(${CMAKE_PROJECT_NAME} PRIVATE "${FDA_PRESET_HEADER}")
     target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE FDA_MODE)
 
     message(STATUS "FDA mode    : ON (preset at page 61)")
