@@ -60,7 +60,8 @@ typedef enum {
 	OW_CODE_PRESET_CRC = 0xF6,   // select's settings_crc is not that preset's
 	OW_CODE_NO_PRESET = 0xF7,    // HV on before any preset was selected
 	OW_CODE_FDA_REFUSED = 0xF8,  // the host may not set the HV setpoint itself
-	                             // (SET_HV, raw DACs), or select while HV is on
+	                             // (SET_HV, raw DACs) or select while HV is on;
+	                             // nor write the user config or enter DFU
 	OW_CODE_IDENT_ERROR = 0xFD,
 	OW_CODE_DATA_ERROR = 0xFE,
 	OW_CODE_ERROR = 0xFF,
