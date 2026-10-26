@@ -52,15 +52,7 @@ endif()
 
 string(TIMESTAMP FW_BUILD_TIME_UTC "%Y-%m-%d %H:%M:%S UTC" UTC)
 
-message(STATUS "FW version   : ${FW_GIT_DESCRIBE}")
-message(STATUS "FW git sha   : ${FW_GIT_SHA}")
-message(STATUS "FW build time: ${FW_BUILD_TIME_UTC}")
-
-configure_file(
-    ${CMAKE_SOURCE_DIR}/version.h.in
-    ${CMAKE_BINARY_DIR}/generated/version.h
-    @ONLY
-)
+# version.h is configured below, once FDA_MODE sets the build variant.
 
 # Set the project name
 set(CMAKE_PROJECT_NAME lifu-console-fw)
@@ -174,11 +166,28 @@ if(FDA_MODE)
                             "examples/generate_presets.py.")
     endif()
     target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE FDA_MODE)
+    set(FW_BUILD_VARIANT "fda")
 
     message(STATUS "FDA mode    : ON (preset at page 61)")
 else()
+    set(FW_BUILD_VARIANT "ruo")
     message(STATUS "FDA mode    : OFF (host sets the HV voltage)")
 endif()
+
+# OW_CMD_VERSION returns FW_VERSION. The "+<variant>" suffix (semver build
+# metadata) lets the host tell an FDA image from a research (RUO) image of the
+# same commit. It matches the transmitter firmware's suffixes.
+set(FW_VERSION_STRING "${FW_GIT_DESCRIBE}+${FW_BUILD_VARIANT}")
+
+message(STATUS "FW version   : ${FW_VERSION_STRING}")
+message(STATUS "FW git sha   : ${FW_GIT_SHA}")
+message(STATUS "FW build time: ${FW_BUILD_TIME_UTC}")
+
+configure_file(
+    ${CMAKE_SOURCE_DIR}/version.h.in
+    ${CMAKE_BINARY_DIR}/generated/version.h
+    @ONLY
+)
 
 # Remove wrong libob.a library dependency when using cpp files
 list(REMOVE_ITEM CMAKE_C_IMPLICIT_LINK_LIBRARIES ob)
