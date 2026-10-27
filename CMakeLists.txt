@@ -170,13 +170,13 @@ if(FDA_MODE)
 
     message(STATUS "FDA mode    : ON (preset at page 61)")
 else()
-    set(FW_BUILD_VARIANT "ruo")
+    set(FW_BUILD_VARIANT "dev")
     message(STATUS "FDA mode    : OFF (host sets the HV voltage)")
 endif()
 
 # OW_CMD_VERSION returns FW_VERSION. The "+<variant>" suffix (semver build
-# metadata) lets the host tell an FDA image from a research (RUO) image of the
-# same commit. It matches the transmitter firmware's suffixes.
+# metadata) lets the host tell an FDA image ("fda") from a development image
+# ("dev") of the same commit. It matches the transmitter firmware's suffixes.
 set(FW_VERSION_STRING "${FW_GIT_DESCRIBE}+${FW_BUILD_VARIANT}")
 
 message(STATUS "FW version   : ${FW_VERSION_STRING}")
