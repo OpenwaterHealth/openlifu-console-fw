@@ -1,28 +1,20 @@
 /*
  * hv_presets.h
  *
- * FDA mode: the HV setpoint belongs to the preset, not the host. The image
- * carries the one preset's HV entry -- its voltage, the transmitter
- * sensitivity that voltage is right for, and the settings_crc of its .json --
- * in the last page of the application slot (page 61, the FDA linker scripts'
- * FDA_PRESET region), from Core/Inc/presets/fda_preset.h, which the openlifu
- * SDK's examples/generate_presets.py writes. Flashing or updating the image
- * writes it; the firmware only reads it.
+ * FDA mode: the HV setpoint comes from the preset, not the host. The image
+ * carries the preset's HV entry at page 61 (Core/Inc/presets/fda_preset.h):
+ * its voltage, the transmitter sensitivity that voltage suits, and the
+ * settings_crc of its .json.
  *
- * The host selects it with OW_POWER_PRESET_SELECT, giving its settings_crc, so
- * a host holding another .json is refused, and the connected transmitter's
- * sensitivity. The console applies
+ * OW_POWER_PRESET_SELECT gives the settings_crc and the connected
+ * transmitter's sensitivity. The console then applies
  *
  *     voltage x preset sensitivity / transmitter sensitivity
  *
- * unless that is outside FDA_HV_MIN_VOLTS..FDA_HV_MAX_VOLTS. OW_POWER_SET_HV
- * and the raw DAC commands are refused, HV cannot be turned on until the
- * preset is selected, and the selection cannot change while HV is on. A
- * select that is refused leaves nothing selected, and one with no payload
- * clears the selection: the host does that when the transmitter did not load
- * the preset, so HV never comes on for a preset only the console holds.
- *
- * Nothing here exists unless the image is built with FDA_MODE.
+ * if that is inside FDA_HV_MIN_VOLTS..FDA_HV_MAX_VOLTS. HV stays off until a
+ * select succeeds, and the selection cannot change while HV is on. A refused
+ * select, or one with no payload, leaves nothing selected. OW_POWER_SET_HV and
+ * the raw DAC commands are refused.
  */
 
 #ifndef INC_HV_PRESETS_H_
@@ -36,8 +28,7 @@
 #include <stdint.h>
 
 /*
- * PRESET_HV_RECORD, little-endian, as the SDK writes it
- * (LIFUTXPresets.console_preset_record):
+ * PRESET_HV_RECORD, little-endian (the SDK's console_preset_record()):
  *   u8  magic[4]      "OWHV"
  *   u8  version       PRESET_HV_VERSION
  *   u8  id_len        1..HV_PRESET_ID_MAX
@@ -58,15 +49,7 @@
 #define FDA_HV_MAX_VOLTS 45.0f
 #define HV_PRESET_NONE 0xFFu
 
-/**
- * @brief  Apply the FDA preset rules to a power command.
- *
- * Answers OW_POWER_PRESET_GET / OW_POWER_PRESET_SELECT and refuses what FDA
- * mode forbids.
- *
- * @return true if cmd was handled here and uartResp filled in; false to let
- *         the normal command processing run.
- */
+/** Answer the preset commands and refuse what FDA mode forbids. False lets the command through. */
 bool hv_presets_process(UartPacket *uartResp, const UartPacket *cmd);
 
 #endif /* FDA_MODE */

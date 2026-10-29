@@ -7,13 +7,13 @@
 #include <float.h>
 #include <string.h>
 
-// One preset, parsed from a record; id points into it.
+// A parsed PRESET_HV_RECORD. id points into it.
 typedef struct {
 	const char *id;
 	uint8_t id_len;
 	uint32_t settings_crc;
-	float voltage;          // V, the preset's own value as float32
-	float sensitivity;      // the transmitter sensitivity that voltage is right for
+	float voltage;          // V
+	float sensitivity;      // the transmitter sensitivity that voltage suits
 } HvPreset;
 
 static void refuse(UartPacket *uartResp, uint8_t code, const char *why)
@@ -29,7 +29,7 @@ static uint32_t rd_u32(const uint8_t *p)
 	return (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
 }
 
-// CRC-32/ISO-HDLC (zlib's), a bit at a time: a record is under 100 bytes.
+// CRC-32/ISO-HDLC (zlib's), a bit at a time.
 static uint32_t crc32(const uint8_t *p, uint32_t n)
 {
 	uint32_t crc = 0xFFFFFFFFu;
@@ -48,7 +48,7 @@ static bool positive(float v)
 	return v > 0.0f && v <= FLT_MAX;
 }
 
-// A PRESET_HV_RECORD (hv_presets.h) within room bytes, whole and with its CRC intact.
+// A whole PRESET_HV_RECORD within room bytes, its CRC intact.
 static bool parse_record(const uint8_t *r, uint32_t room, HvPreset *out)
 {
 	if (room < PRESET_HV_HEADER + 4U || memcmp(r, "OWHV", 4U) != 0 || r[4] != PRESET_HV_VERSION) return false;
@@ -68,13 +68,12 @@ static bool parse_record(const uint8_t *r, uint32_t room, HvPreset *out)
 _Static_assert(FDA_HV_MIN_VOLTS > 0.0f && FDA_HV_MIN_VOLTS <= FDA_HV_MAX_VOLTS,
                "the FDA voltage window is empty");
 
-// Whether the preset's voltage is applied: none until the host selects it.
+// HV_PRESET_NONE until a select succeeds.
 static uint8_t selected = HV_PRESET_NONE;
-// The voltage that select arrived at: the preset's, rescaled to the transmitter.
+// The voltage that select applied.
 static float applied = 0.0f;
 
-// The one preset, from the SDK. The linker puts it at the start of the
-// FDA_PRESET region; it is read from there, so what runs is what was flashed.
+// The linker places it at page 61, and it is read from there.
 #include "presets/fda_preset.h"
 extern const uint8_t _sfda_preset[];
 
@@ -125,17 +124,15 @@ static void preset_get(UartPacket *uartResp, const UartPacket *cmd)
 
 static void preset_select(UartPacket *uartResp, const UartPacket *cmd)
 {
-	// A new setpoint, or none, under a live rail would change the output
-	// mid-sonication, so what is selected stays as it is.
+	// Never under a live rail, where it would change the output.
 	if (getHVOnStatus()) {
-		refuse(uartResp, OW_CODE_FDA_REFUSED, "HV is on; turn it off to select a preset");
+		refuse(uartResp, OW_CODE_FDA_REFUSED, "HV is on, turn it off to select a preset");
 		return;
 	}
-	// Anything short of a select that succeeds leaves nothing selected, so HV
-	// cannot come on for an earlier preset the host no longer matches.
+	// Anything but a successful select leaves nothing selected.
 	selected = HV_PRESET_NONE;
 	applied = 0.0f;
-	// No payload is the host clearing the selection: its transmitter did not load.
+	// No payload: the host is clearing the selection.
 	if (cmd->data_len == 0U) return;
 
 	HvPreset p;
@@ -170,7 +167,7 @@ static void preset_select(UartPacket *uartResp, const UartPacket *cmd)
 	uartResp->data_len = (uint16_t)sizeof(applied);
 }
 
-// Which commands this module answers; the rest go to normal processing untouched.
+// Commands answered here. The rest go to normal processing.
 static bool handled_here(const UartPacket *cmd)
 {
 	switch (cmd->command) {
