@@ -93,9 +93,7 @@
 #define METADATA_ADDRESS        			((uint32_t)0x08007800)
 #define APPLICATION_ADDRESS     			((uint32_t)0x08008000)
 #define APPLICATION_USER_CONFIG    			((uint32_t)0x0801F800) // 2 KB user config region
-// FDA mode: the last page of the bootloader's application slot (pages 32-61)
-// holds the preset's HV entry, linked into the image (FDA_PRESET in the FDA
-// linker scripts, hv_presets.h).
+// FDA mode: the preset's HV entry, linked into the slot's last page (the FDA linker scripts).
 #define FDA_PRESET_ADDRESS                  ADDR_FLASH_PAGE_61
 #define APPLICATION_MAX_SIZE                ((uint32_t)(94U * 1024U))
 

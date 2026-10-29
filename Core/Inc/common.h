@@ -55,13 +55,12 @@ typedef enum {
 
 typedef enum {
 	OW_CODE_SUCCESS = 0x00,
-	// FDA mode refusals (hv_presets.c).
-	OW_CODE_HV_RANGE = 0xF1,     // select: the rescaled voltage is outside the FDA window
-	OW_CODE_PRESET_CRC = 0xF6,   // select's settings_crc is not that preset's
-	OW_CODE_NO_PRESET = 0xF7,    // HV on before any preset was selected
-	OW_CODE_FDA_REFUSED = 0xF8,  // the host may not set the HV setpoint itself
-	                             // (SET_HV, raw DACs) or select while HV is on;
-	                             // nor write the user config or enter DFU
+	// FDA mode refusals (hv_presets.c, if_commands.c).
+	OW_CODE_HV_RANGE = 0xF1,     // select: the rescaled voltage is outside the window
+	OW_CODE_PRESET_CRC = 0xF6,   // select: settings_crc is not the preset's
+	OW_CODE_NO_PRESET = 0xF7,    // HV on with no preset selected
+	OW_CODE_FDA_REFUSED = 0xF8,  // SET_HV, raw DACs, a select while HV is on,
+	                             // a USR_CFG write, or DFU
 	OW_CODE_IDENT_ERROR = 0xFD,
 	OW_CODE_DATA_ERROR = 0xFE,
 	OW_CODE_ERROR = 0xFF,
@@ -112,10 +111,9 @@ typedef enum {
 	OW_POWER_RAW_DAC = 0x41,
 	OW_POWER_HV_ENABLE = 0x42,
 	OW_POWER_SET_RGB_FX = 0x43,
-	OW_POWER_PRESET_GET = 0x44,     // FDA mode only: reserved=index -> that preset's HV entry
-	OW_POWER_PRESET_SELECT = 0x45,  // FDA mode only: reserved=index, data=settings_crc u32 +
-	                                //   transmitter sensitivity f32 (LE) -> voltage applied f32;
-	                                //   refused, or sent with no data, nothing is left selected
+	OW_POWER_PRESET_GET = 0x44,     // FDA mode: reserved=0 -> the preset's HV entry
+	OW_POWER_PRESET_SELECT = 0x45,  // FDA mode: reserved=0, data=settings_crc u32 + transmitter
+	                                //   sensitivity f32 (LE) -> voltage applied f32. No data deselects
 } UstxPowerCommands;
 
 /* OW_POWER_SET_RGB_FX payload (cmd.data, little-endian):
