@@ -159,6 +159,16 @@ target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE
 # openlifu SDK's examples/generate_presets.py. The console applies its voltage
 # when the host selects it, and refuses OW_POWER_SET_HV and the raw DAC
 # commands (Core/Inc/hv_presets.h).
+#
+# A presets-only (FDA_MODE) image reports which preset set it carries:
+# "fda" (the released preset) or "test" (the test presets). It must match a
+# preset context in openlifu-diathermy-application.
+set(FW_PRESET_VARIANT "fda" CACHE STRING "Preset set in a presets-only image: fda or test")
+set_property(CACHE FW_PRESET_VARIANT PROPERTY STRINGS fda test)
+if(NOT FW_PRESET_VARIANT MATCHES "^(fda|test)$")
+    message(FATAL_ERROR "FW_PRESET_VARIANT must be fda or test, not '${FW_PRESET_VARIANT}'.")
+endif()
+
 if(FDA_MODE)
     set(FDA_PRESET_HEADER "${CMAKE_SOURCE_DIR}/Core/Inc/presets/fda_preset.h")
     if(NOT EXISTS "${FDA_PRESET_HEADER}")
@@ -166,18 +176,24 @@ if(FDA_MODE)
                             "examples/generate_presets.py.")
     endif()
     target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE FDA_MODE)
-    set(FW_BUILD_VARIANT "fda")
+    set(FW_BUILD_VARIANT "${FW_PRESET_VARIANT}")
 
     message(STATUS "FDA mode    : ON (preset at page 61)")
 else()
-    set(FW_BUILD_VARIANT "dev")
+    set(FW_BUILD_VARIANT "")
     message(STATUS "FDA mode    : OFF (host sets the HV voltage)")
 endif()
 
-# OW_CMD_VERSION returns FW_VERSION. The "+<variant>" suffix (semver build
-# metadata) lets the host tell an FDA image ("fda") from a development image
-# ("dev") of the same commit. It matches the transmitter firmware's suffixes.
-set(FW_VERSION_STRING "${FW_GIT_DESCRIBE}+${FW_BUILD_VARIANT}")
+# OW_CMD_VERSION returns FW_VERSION. A presets-only image appends
+# "+<FW_PRESET_VARIANT>" (semver build metadata), so the host can tell which
+# preset set it carries without writing to the device. Any other build has no
+# suffix: all commands are enabled and the host treats it as a development or
+# service image. The suffixes match the transmitter firmware's.
+if(FW_BUILD_VARIANT)
+    set(FW_VERSION_STRING "${FW_GIT_DESCRIBE}+${FW_BUILD_VARIANT}")
+else()
+    set(FW_VERSION_STRING "${FW_GIT_DESCRIBE}")
+endif()
 
 message(STATUS "FW version   : ${FW_VERSION_STRING}")
 message(STATUS "FW git sha   : ${FW_GIT_SHA}")
