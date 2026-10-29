@@ -55,11 +55,12 @@ typedef enum {
 
 typedef enum {
 	OW_CODE_SUCCESS = 0x00,
-	// FDA mode refusals (hv_presets.c).
+	// FDA mode refusals (hv_presets.c, if_commands.c).
 	OW_CODE_HV_RANGE = 0xF1,     // select: the rescaled voltage is outside the window
 	OW_CODE_PRESET_CRC = 0xF6,   // select: settings_crc is not the preset's
 	OW_CODE_NO_PRESET = 0xF7,    // HV on with no preset selected
-	OW_CODE_FDA_REFUSED = 0xF8,  // SET_HV, raw DACs, or a select while HV is on
+	OW_CODE_FDA_REFUSED = 0xF8,  // SET_HV, raw DACs, a select while HV is on,
+	                             // a USR_CFG write, or DFU
 	OW_CODE_IDENT_ERROR = 0xFD,
 	OW_CODE_DATA_ERROR = 0xFE,
 	OW_CODE_ERROR = 0xFF,
