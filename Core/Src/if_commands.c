@@ -305,6 +305,15 @@ static void POWER_ProcessCommand(UartPacket *uartResp, UartPacket cmd)
             // reserved == 1: WRITE (cmd.data is JSON text)
 			uartResp->id = cmd.id;
 			uartResp->command = OW_CMD_USR_CFG;
+#ifdef FDA_MODE
+			// FDA mode: the user config is read-only; a service build writes it.
+			if (cmd.reserved == 1) {
+				uartResp->packet_type = OW_ERROR;
+				uartResp->reserved = OW_CODE_FDA_REFUSED;
+				uartResp->data_len = 0;
+				break;
+			}
+#endif
             if (cmd.reserved == 0) {
                 const uint8_t *wire_buf = NULL;
                 uint16_t wire_len = 0;
@@ -372,6 +381,13 @@ static void POWER_ProcessCommand(UartPacket *uartResp, UartPacket cmd)
 			break;
 		case OW_CMD_DFU:
 			uartResp->command = OW_CMD_DFU;
+#ifdef FDA_MODE
+			// FDA mode: no DFU entry, the STM32 ROM loader (0x77) included.
+			uartResp->packet_type = OW_ERROR;
+			uartResp->reserved = OW_CODE_FDA_REFUSED;
+			uartResp->data_len = 0;
+			break;
+#endif
 			uartResp->addr = cmd.addr;
 			uartResp->reserved = cmd.reserved;
 			uartResp->data_len = 0;
