@@ -14,6 +14,8 @@ typedef struct {
 	uint32_t settings_crc;
 	float voltage;          // V
 	float sensitivity;      // the transmitter sensitivity that voltage suits
+	float window[2];        // lowest, highest voltage a select may arrive at
+	uint32_t size;          // bytes the record takes, CRC included
 } HvPreset;
 
 static void refuse(UartPacket *uartResp, uint8_t code, const char *why)
@@ -48,38 +50,74 @@ static bool positive(float v)
 	return v > 0.0f && v <= FLT_MAX;
 }
 
-// A whole PRESET_HV_RECORD within room bytes, its CRC intact.
+// A whole PRESET_HV_RECORD within room bytes, its CRC intact, whose range is
+// inside HV_PRESET_FLOOR_VOLTS..HV_PRESET_CEILING_VOLTS.
 static bool parse_record(const uint8_t *r, uint32_t room, HvPreset *out)
 {
-	if (room < PRESET_HV_HEADER + 4U || memcmp(r, "OWHV", 4U) != 0 || r[4] != PRESET_HV_VERSION) return false;
+	if (room < PRESET_HV_HEADER_V1 + 4U || memcmp(r, "OWHV", 4U) != 0) return false;
+	uint32_t header;
+	if (r[4] == 1U) {
+		header = PRESET_HV_HEADER_V1;
+	} else if (r[4] == 2U) {
+		header = PRESET_HV_HEADER_V2;
+	} else {
+		return false;
+	}
 	uint8_t id_len = r[5];
 	if (id_len < 1U || id_len > HV_PRESET_ID_MAX) return false;
-	uint32_t len = PRESET_HV_HEADER + id_len;
+	uint32_t len = header + id_len;
 	if (room < len + 4U || crc32(r, len) != rd_u32(&r[len])) return false;
 	out->settings_crc = rd_u32(&r[8]);
 	memcpy(&out->voltage, &r[12], 4);
 	memcpy(&out->sensitivity, &r[16], 4);
+	if (header == PRESET_HV_HEADER_V2) {
+		memcpy(out->window, &r[20], 8);
+	} else {
+		out->window[0] = FDA_HV_MIN_VOLTS;
+		out->window[1] = FDA_HV_MAX_VOLTS;
+	}
 	if (!positive(out->voltage) || !positive(out->sensitivity)) return false;
-	out->id = (const char *)&r[PRESET_HV_HEADER];
+	// Also false for a NaN bound.
+	if (!(out->window[0] >= HV_PRESET_FLOOR_VOLTS && out->window[0] <= out->window[1]
+	      && out->window[1] <= HV_PRESET_CEILING_VOLTS)) return false;
+	out->id = (const char *)&r[header];
 	out->id_len = id_len;
+	out->size = len + 4U;
 	return true;
 }
 
-_Static_assert(FDA_HV_MIN_VOLTS > 0.0f && FDA_HV_MIN_VOLTS <= FDA_HV_MAX_VOLTS,
-               "the FDA voltage window is empty");
+_Static_assert(HV_PRESET_FLOOR_VOLTS > 0.0f && HV_PRESET_FLOOR_VOLTS <= FDA_HV_MIN_VOLTS
+               && FDA_HV_MIN_VOLTS <= FDA_HV_MAX_VOLTS && FDA_HV_MAX_VOLTS <= HV_PRESET_CEILING_VOLTS,
+               "the FDA window must lie inside the preset window");
 
 // HV_PRESET_NONE until a select succeeds.
 static uint8_t selected = HV_PRESET_NONE;
 // The voltage that select applied.
 static float applied = 0.0f;
 
-// The linker places it at page 61, and it is read from there.
+// The linker places the records at page 61, and they are read from there.
+#ifdef PRESET_HV_TABLE
+#include "presets/preset_hv_table.h"
+_Static_assert(PRESET_HV_COUNT >= 1U && PRESET_HV_COUNT < HV_PRESET_NONE, "PRESET_HV_COUNT out of range");
+#define PRESETS_SIZE sizeof(PRESET_HV_RECORDS)
+#else
 #include "presets/fda_preset.h"
+#define PRESET_HV_COUNT 1U
+#define PRESETS_SIZE sizeof(FDA_PRESET_HV)
+#endif
 extern const uint8_t _sfda_preset[];
 
-static bool stored_preset(HvPreset *out)
+// Preset index's record. Every record before it must parse too, since each
+// starts where the one before it ends.
+static bool stored_preset(uint8_t index, HvPreset *out)
 {
-	return parse_record(_sfda_preset, PRESET_HV_RECORD_MAX, out);
+	if (index >= PRESET_HV_COUNT) return false;
+	uint32_t offset = 0U;
+	for (uint8_t i = 0U; i <= index; i++) {
+		if (!parse_record(&_sfda_preset[offset], PRESETS_SIZE - offset, out)) return false;
+		offset += out->size;
+	}
+	return true;
 }
 
 static void put_u32(uint8_t *p, uint32_t v)
@@ -97,25 +135,24 @@ static void preset_get(UartPacket *uartResp, const UartPacket *cmd)
 	// [19..22] lowest, [23..26] highest voltage a select may arrive at
 	// [27] id_len [28..] id                          (all LE, voltages f32)
 	static uint8_t reply[28U + HV_PRESET_ID_MAX];
-	static const float window[2] = { FDA_HV_MIN_VOLTS, FDA_HV_MAX_VOLTS };
 	HvPreset p;
 
-	if (cmd->reserved != 0U) {
+	if (cmd->reserved >= PRESET_HV_COUNT) {
 		refuse(uartResp, OW_CODE_DATA_ERROR, "no such preset");
 		return;
 	}
-	if (!stored_preset(&p)) {
+	if (!stored_preset(cmd->reserved, &p)) {
 		refuse(uartResp, OW_CODE_DATA_ERROR, "no preset stored");
 		return;
 	}
-	reply[0] = 1U;
+	reply[0] = (uint8_t)PRESET_HV_COUNT;
 	reply[1] = cmd->reserved;
 	reply[2] = selected;
 	put_u32(&reply[3], p.settings_crc);
 	memcpy(&reply[7], &p.voltage, 4);
 	memcpy(&reply[11], &p.sensitivity, 4);
 	memcpy(&reply[15], &applied, 4);
-	memcpy(&reply[19], window, 8);
+	memcpy(&reply[19], p.window, 8);
 	reply[27] = p.id_len;
 	memcpy(&reply[28], p.id, p.id_len);
 	uartResp->data = reply;
@@ -136,11 +173,11 @@ static void preset_select(UartPacket *uartResp, const UartPacket *cmd)
 	if (cmd->data_len == 0U) return;
 
 	HvPreset p;
-	if (cmd->data == NULL || cmd->data_len != 8U || cmd->reserved != 0U) {
-		refuse(uartResp, OW_CODE_DATA_ERROR, "need preset index 0, its settings_crc and the transmitter sensitivity");
+	if (cmd->data == NULL || cmd->data_len != 8U || cmd->reserved >= PRESET_HV_COUNT) {
+		refuse(uartResp, OW_CODE_DATA_ERROR, "need a preset index, its settings_crc and the transmitter sensitivity");
 		return;
 	}
-	if (!stored_preset(&p)) {
+	if (!stored_preset(cmd->reserved, &p)) {
 		refuse(uartResp, OW_CODE_DATA_ERROR, "no preset stored");
 		return;
 	}
@@ -156,8 +193,8 @@ static void preset_select(UartPacket *uartResp, const UartPacket *cmd)
 	}
 	// A less sensitive transmitter needs proportionally more voltage for the same output.
 	float volts = p.voltage * p.sensitivity / transmitter;
-	if (!(volts >= FDA_HV_MIN_VOLTS && volts <= FDA_HV_MAX_VOLTS)) {
-		refuse(uartResp, OW_CODE_HV_RANGE, "the voltage for this transmitter is outside the FDA window");
+	if (!(volts >= p.window[0] && volts <= p.window[1])) {
+		refuse(uartResp, OW_CODE_HV_RANGE, "the voltage for this transmitter is outside the preset's range");
 		return;
 	}
 	hv_set_voltage(volts);

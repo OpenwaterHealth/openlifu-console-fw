@@ -154,9 +154,8 @@ target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE
 # ---------------------------
 # FDA mode
 # ---------------------------
-# FDA_MODE links the preset's HV entry into page 61, the end of the
-# bootloader's slot. Its header, Core/Inc/presets/fda_preset.h, comes from the
-# openlifu SDK's examples/generate_presets.py. The console applies its voltage
+# FDA_MODE links the presets' HV entries into page 61, the end of the
+# bootloader's slot. The console applies the selected preset's voltage
 # when the host selects it, and refuses OW_POWER_SET_HV and the raw DAC
 # commands (Core/Inc/hv_presets.h).
 #
@@ -169,16 +168,30 @@ if(NOT FW_PRESET_VARIANT MATCHES "^(fda|test)$")
     message(FATAL_ERROR "FW_PRESET_VARIANT must be fda or test, not '${FW_PRESET_VARIANT}'.")
 endif()
 
+# One preset is linked from fda_preset.h; several from preset_hv_table.h
+# (the SDK's generate_console_presets), whose records carry their own voltage
+# ranges. Only a "test" image may link the table: an "fda" image keeps the
+# one preset and the 35-45 V window (Core/Inc/hv_presets.h).
 if(FDA_MODE)
     set(FDA_PRESET_HEADER "${CMAKE_SOURCE_DIR}/Core/Inc/presets/fda_preset.h")
-    if(NOT EXISTS "${FDA_PRESET_HEADER}")
-        message(FATAL_ERROR "FDA_MODE needs ${FDA_PRESET_HEADER}: generate it with the openlifu SDK's "
-                            "examples/generate_presets.py.")
+    set(PRESET_HV_TABLE_HEADER "${CMAKE_SOURCE_DIR}/Core/Inc/presets/preset_hv_table.h")
+    if(EXISTS "${FDA_PRESET_HEADER}" AND EXISTS "${PRESET_HV_TABLE_HEADER}")
+        message(FATAL_ERROR "Core/Inc/presets holds both fda_preset.h and preset_hv_table.h; "
+                            "keep only the one for this preset set.")
+    elseif(EXISTS "${PRESET_HV_TABLE_HEADER}")
+        if(NOT FW_PRESET_VARIANT STREQUAL "test")
+            message(FATAL_ERROR "preset_hv_table.h is for FW_PRESET_VARIANT=test, not '${FW_PRESET_VARIANT}'.")
+        endif()
+        target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE PRESET_HV_TABLE)
+        message(STATUS "FDA mode    : ON (preset table at page 61)")
+    elseif(EXISTS "${FDA_PRESET_HEADER}")
+        message(STATUS "FDA mode    : ON (preset at page 61)")
+    else()
+        message(FATAL_ERROR "FDA_MODE needs ${FDA_PRESET_HEADER} or ${PRESET_HV_TABLE_HEADER}: "
+                            "generate it with the openlifu SDK.")
     endif()
     target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE FDA_MODE)
     set(FW_BUILD_VARIANT "${FW_PRESET_VARIANT}")
-
-    message(STATUS "FDA mode    : ON (preset at page 61)")
 else()
     set(FW_BUILD_VARIANT "")
     message(STATUS "FDA mode    : OFF (host sets the HV voltage)")
