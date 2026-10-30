@@ -5,13 +5,17 @@ Run from the repo root with the openlifu SDK installed:
     pytest tests/hil -v                    # bench step 4.07; HV stays off
     pytest tests/hil -v --hv-dummy-load    # also 4.08: turns HV on into a dummy load
 
-Skipped unless a console answers on USB and runs an FDA image. Tests marked
-`hv` turn the HV rail on and skip unless --hv-dummy-load is given.
+Skipped unless a console answers on USB and runs a presets-only image (+fda,
+one preset, or +test, four). Tests marked `hv` turn the HV rail on and skip
+unless --hv-dummy-load is given.
 """
 
 import pytest
 from openlifu_sdk.io.LIFUConfig import OW_POWER, OW_POWER_PRESET_GET, OW_RESP
 from openlifu_sdk.io.LIFUHVController import LIFUHVController
+
+# Presets-only images and how many presets each links (console-fw#21, #32).
+PRESETS_ONLY = {"+fda": 1, "+test": 4}
 
 
 def pytest_addoption(parser):
@@ -61,15 +65,21 @@ def send_raw(console, packet_type, command, addr=0, reserved=0, data=None):
 
 @pytest.fixture(scope="session")
 def fda(console) -> str:
-    """Skip unless the console runs an FDA image; returns its version.
+    """Skip unless the console runs a presets-only image; returns its version.
 
-    Only an FDA image answers PRESET_GET with its preset. Anything else would
-    run the DFU and HV commands these tests send.
+    That is a +fda or +test version that also answers PRESET_GET with its
+    first preset. Any other image (a plain one has no suffix) would run the
+    DFU and HV commands these tests send.
     """
     version = console.get_version()
-    if version.endswith(("+dev", "+ruo")):
-        pytest.skip(f"not an FDA image ({version})")
+    if not version.endswith(tuple(PRESETS_ONLY)):
+        pytest.skip(f"not a presets-only image ({version})")
     r = send_raw(console, OW_POWER, OW_POWER_PRESET_GET)
     if r is None or r.packet_type != OW_RESP or r.data_len == 0:
-        pytest.skip(f"not an FDA image with a preset ({version})")
+        pytest.skip(f"not a presets-only image with a preset ({version})")
     return version
+
+
+def preset_count(version: str) -> int:
+    """How many presets a presets-only image of this version links."""
+    return PRESETS_ONLY["+" + version.rsplit("+", 1)[1]]
