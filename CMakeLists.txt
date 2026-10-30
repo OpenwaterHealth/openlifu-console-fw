@@ -52,15 +52,7 @@ endif()
 
 string(TIMESTAMP FW_BUILD_TIME_UTC "%Y-%m-%d %H:%M:%S UTC" UTC)
 
-message(STATUS "FW version   : ${FW_GIT_DESCRIBE}")
-message(STATUS "FW git sha   : ${FW_GIT_SHA}")
-message(STATUS "FW build time: ${FW_BUILD_TIME_UTC}")
-
-configure_file(
-    ${CMAKE_SOURCE_DIR}/version.h.in
-    ${CMAKE_BINARY_DIR}/generated/version.h
-    @ONLY
-)
+# version.h is configured below, once FDA_MODE sets the build variant.
 
 # Set the project name
 set(CMAKE_PROJECT_NAME lifu-console-fw)
@@ -162,23 +154,66 @@ target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE
 # ---------------------------
 # FDA mode
 # ---------------------------
-# FDA_MODE links the preset's HV entry into page 61, the end of the
-# bootloader's slot. Its header, Core/Inc/presets/fda_preset.h, comes from the
-# openlifu SDK's examples/generate_presets.py. The console applies its voltage
+# FDA_MODE links the presets' HV entries into page 61, the end of the
+# bootloader's slot. The console applies the selected preset's voltage
 # when the host selects it, and refuses OW_POWER_SET_HV and the raw DAC
 # commands (Core/Inc/hv_presets.h).
+#
+# A presets-only (FDA_MODE) image reports which preset set it carries:
+# "fda" (the released preset) or "test" (the test presets). It must match a
+# preset context in openlifu-diathermy-application.
+set(FW_PRESET_VARIANT "fda" CACHE STRING "Preset set in a presets-only image: fda or test")
+set_property(CACHE FW_PRESET_VARIANT PROPERTY STRINGS fda test)
+if(NOT FW_PRESET_VARIANT MATCHES "^(fda|test)$")
+    message(FATAL_ERROR "FW_PRESET_VARIANT must be fda or test, not '${FW_PRESET_VARIANT}'.")
+endif()
+
+# One preset is linked from fda_preset.h; several from preset_hv_table.h
+# (the SDK's generate_console_presets). Each record carries its own voltage
+# range, held under the one fixed 45 V ceiling (Core/Inc/hv_presets.h), so
+# either header may go with either FW_PRESET_VARIANT.
 if(FDA_MODE)
     set(FDA_PRESET_HEADER "${CMAKE_SOURCE_DIR}/Core/Inc/presets/fda_preset.h")
-    if(NOT EXISTS "${FDA_PRESET_HEADER}")
-        message(FATAL_ERROR "FDA_MODE needs ${FDA_PRESET_HEADER}: generate it with the openlifu SDK's "
-                            "examples/generate_presets.py.")
+    set(PRESET_HV_TABLE_HEADER "${CMAKE_SOURCE_DIR}/Core/Inc/presets/preset_hv_table.h")
+    if(EXISTS "${FDA_PRESET_HEADER}" AND EXISTS "${PRESET_HV_TABLE_HEADER}")
+        message(FATAL_ERROR "Core/Inc/presets holds both fda_preset.h and preset_hv_table.h; "
+                            "keep only the one for this preset set.")
+    elseif(EXISTS "${PRESET_HV_TABLE_HEADER}")
+        target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE HV_PRESET_TABLE_IMAGE)
+        message(STATUS "FDA mode    : ON (preset table at page 61)")
+    elseif(EXISTS "${FDA_PRESET_HEADER}")
+        message(STATUS "FDA mode    : ON (preset at page 61)")
+    else()
+        message(FATAL_ERROR "FDA_MODE needs ${FDA_PRESET_HEADER} or ${PRESET_HV_TABLE_HEADER}: "
+                            "generate it with the openlifu SDK.")
     endif()
     target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE FDA_MODE)
-
-    message(STATUS "FDA mode    : ON (preset at page 61)")
+    set(FW_BUILD_VARIANT "${FW_PRESET_VARIANT}")
 else()
+    set(FW_BUILD_VARIANT "")
     message(STATUS "FDA mode    : OFF (host sets the HV voltage)")
 endif()
+
+# OW_CMD_VERSION returns FW_VERSION. A presets-only image appends
+# "+<FW_PRESET_VARIANT>" (semver build metadata), so the host can tell which
+# preset set it carries without writing to the device. Any other build has no
+# suffix: all commands are enabled and the host treats it as a development or
+# service image. The suffixes match the transmitter firmware's.
+if(FW_BUILD_VARIANT)
+    set(FW_VERSION_STRING "${FW_GIT_DESCRIBE}+${FW_BUILD_VARIANT}")
+else()
+    set(FW_VERSION_STRING "${FW_GIT_DESCRIBE}")
+endif()
+
+message(STATUS "FW version   : ${FW_VERSION_STRING}")
+message(STATUS "FW git sha   : ${FW_GIT_SHA}")
+message(STATUS "FW build time: ${FW_BUILD_TIME_UTC}")
+
+configure_file(
+    ${CMAKE_SOURCE_DIR}/version.h.in
+    ${CMAKE_BINARY_DIR}/generated/version.h
+    @ONLY
+)
 
 # Remove wrong libob.a library dependency when using cpp files
 list(REMOVE_ITEM CMAKE_C_IMPLICIT_LINK_LIBRARIES ob)
