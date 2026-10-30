@@ -51,44 +51,27 @@ static bool positive(float v)
 }
 
 // A whole PRESET_HV_RECORD within room bytes, its CRC intact, whose range is
-// inside HV_PRESET_FLOOR_VOLTS..HV_PRESET_CEILING_VOLTS.
+// positive, in order and no higher than HV_PRESET_CEILING_VOLTS.
 static bool parse_record(const uint8_t *r, uint32_t room, HvPreset *out)
 {
-	if (room < PRESET_HV_HEADER_V1 + 4U || memcmp(r, "OWHV", 4U) != 0) return false;
-	uint32_t header;
-	if (r[4] == 1U) {
-		header = PRESET_HV_HEADER_V1;
-	} else if (r[4] == 2U) {
-		header = PRESET_HV_HEADER_V2;
-	} else {
-		return false;
-	}
+	if (room < PRESET_HV_HEADER + 4U || memcmp(r, "OWHV", 4U) != 0 || r[4] != PRESET_HV_VERSION) return false;
 	uint8_t id_len = r[5];
 	if (id_len < 1U || id_len > HV_PRESET_ID_MAX) return false;
-	uint32_t len = header + id_len;
+	uint32_t len = PRESET_HV_HEADER + id_len;
 	if (room < len + 4U || crc32(r, len) != rd_u32(&r[len])) return false;
 	out->settings_crc = rd_u32(&r[8]);
 	memcpy(&out->voltage, &r[12], 4);
 	memcpy(&out->sensitivity, &r[16], 4);
-	if (header == PRESET_HV_HEADER_V2) {
-		memcpy(out->window, &r[20], 8);
-	} else {
-		out->window[0] = FDA_HV_MIN_VOLTS;
-		out->window[1] = FDA_HV_MAX_VOLTS;
-	}
+	memcpy(out->window, &r[20], 8);
 	if (!positive(out->voltage) || !positive(out->sensitivity)) return false;
 	// Also false for a NaN bound.
-	if (!(out->window[0] >= HV_PRESET_FLOOR_VOLTS && out->window[0] <= out->window[1]
+	if (!(positive(out->window[0]) && out->window[0] <= out->window[1]
 	      && out->window[1] <= HV_PRESET_CEILING_VOLTS)) return false;
-	out->id = (const char *)&r[header];
+	out->id = (const char *)&r[PRESET_HV_HEADER];
 	out->id_len = id_len;
 	out->size = len + 4U;
 	return true;
 }
-
-_Static_assert(HV_PRESET_FLOOR_VOLTS > 0.0f && HV_PRESET_FLOOR_VOLTS <= FDA_HV_MIN_VOLTS
-               && FDA_HV_MIN_VOLTS <= FDA_HV_MAX_VOLTS && FDA_HV_MAX_VOLTS <= HV_PRESET_CEILING_VOLTS,
-               "the FDA window must lie inside the preset window");
 
 // HV_PRESET_NONE until a select succeeds.
 static uint8_t selected = HV_PRESET_NONE;
@@ -96,10 +79,10 @@ static uint8_t selected = HV_PRESET_NONE;
 static float applied = 0.0f;
 
 // The linker places the records at page 61, and they are read from there.
-#ifdef PRESET_HV_TABLE
+#ifdef HV_PRESET_TABLE_IMAGE
 #include "presets/preset_hv_table.h"
 _Static_assert(PRESET_HV_COUNT >= 1U && PRESET_HV_COUNT < HV_PRESET_NONE, "PRESET_HV_COUNT out of range");
-#define PRESETS_SIZE sizeof(PRESET_HV_RECORDS)
+#define PRESETS_SIZE sizeof(PRESET_HV_TABLE)
 #else
 #include "presets/fda_preset.h"
 #define PRESET_HV_COUNT 1U

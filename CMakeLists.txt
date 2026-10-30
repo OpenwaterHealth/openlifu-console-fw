@@ -169,9 +169,9 @@ if(NOT FW_PRESET_VARIANT MATCHES "^(fda|test)$")
 endif()
 
 # One preset is linked from fda_preset.h; several from preset_hv_table.h
-# (the SDK's generate_console_presets), whose records carry their own voltage
-# ranges. Only a "test" image may link the table: an "fda" image keeps the
-# one preset and the 35-45 V window (Core/Inc/hv_presets.h).
+# (the SDK's generate_console_presets). Each record carries its own voltage
+# range (Core/Inc/hv_presets.h). Only a "test" image may link the table: an
+# "fda" image links the one released preset.
 if(FDA_MODE)
     set(FDA_PRESET_HEADER "${CMAKE_SOURCE_DIR}/Core/Inc/presets/fda_preset.h")
     set(PRESET_HV_TABLE_HEADER "${CMAKE_SOURCE_DIR}/Core/Inc/presets/preset_hv_table.h")
@@ -182,7 +182,7 @@ if(FDA_MODE)
         if(NOT FW_PRESET_VARIANT STREQUAL "test")
             message(FATAL_ERROR "preset_hv_table.h is for FW_PRESET_VARIANT=test, not '${FW_PRESET_VARIANT}'.")
         endif()
-        target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE PRESET_HV_TABLE)
+        target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE HV_PRESET_TABLE_IMAGE)
         message(STATUS "FDA mode    : ON (preset table at page 61)")
     elseif(EXISTS "${FDA_PRESET_HEADER}")
         message(STATUS "FDA mode    : ON (preset at page 61)")

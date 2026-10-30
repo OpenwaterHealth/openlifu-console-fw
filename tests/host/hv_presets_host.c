@@ -29,8 +29,8 @@ bool hv_set_voltage(float value) { last_set = value; return true; }
 
 // The firmware reads the records from the linker's _sfda_preset; here that is
 // the generated array itself.
-#ifdef PRESET_HV_TABLE
-#define _sfda_preset PRESET_HV_RECORDS
+#ifdef HV_PRESET_TABLE_IMAGE
+#define _sfda_preset PRESET_HV_TABLE
 #else
 #define _sfda_preset FDA_PRESET_HV
 #endif

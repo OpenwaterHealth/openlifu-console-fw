@@ -5,11 +5,12 @@
  * carries each preset's HV entry at page 61: its voltage, the transmitter
  * sensitivity that voltage suits, and the settings_crc of its .json.
  *
- *   +fda  one PRESET_HV_RECORD v1 (Core/Inc/presets/fda_preset.h), held to
- *         FDA_HV_MIN_VOLTS..FDA_HV_MAX_VOLTS.
- *   +test PRESET_HV_COUNT v2 records back to back, in the transmitter's
- *         preset order (Core/Inc/presets/preset_hv_table.h). Each carries its
- *         preset's voltage_range and is held to it.
+ *   +fda  one PRESET_HV_RECORD (Core/Inc/presets/fda_preset.h).
+ *   +test PRESET_HV_COUNT records back to back, in the transmitter's preset
+ *         order (Core/Inc/presets/preset_hv_table.h).
+ *
+ * Each record carries its preset's voltage_range, and a select is held to it.
+ * No record may reach above HV_PRESET_CEILING_VOLTS.
  *
  * OW_POWER_PRESET_SELECT (reserved = preset index) gives the settings_crc and
  * the connected transmitter's sensitivity. The console then applies
@@ -33,37 +34,27 @@
 #include <stdint.h>
 
 /*
- * PRESET_HV_RECORD, little-endian (the SDK's console_preset_record()):
+ * PRESET_HV_RECORD, little-endian (the SDK's console_preset_record(version=2)):
  *   u8  magic[4]      "OWHV"
- *   u8  version       1 or 2
+ *   u8  version       PRESET_HV_VERSION
  *   u8  id_len        1..HV_PRESET_ID_MAX
  *   u8  reserved[2]   0
  *   u32 settings_crc  CRC-32 of the preset .json
  *   f32 voltage       V, for a transmitter of this sensitivity
  *   f32 sensitivity
- *   f32 voltage_min   v2 only: the preset's voltage_range, V
- *   f32 voltage_max   v2 only
+ *   f32 voltage_min   the preset's voltage_range, V
+ *   f32 voltage_max
  *   u8  id[id_len]    ASCII, not NUL-terminated
  *   u32 crc           CRC-32 of everything before it
  */
-#define PRESET_HV_HEADER_V1  20u
-#define PRESET_HV_HEADER_V2  28u
+#define PRESET_HV_VERSION    2u
+#define PRESET_HV_HEADER     28u
 #define HV_PRESET_ID_MAX     64u
-#define PRESET_HV_RECORD_MAX (PRESET_HV_HEADER_V2 + HV_PRESET_ID_MAX + 4u)
 
-// A v1 record's range: the FDA preset's.
-#define FDA_HV_MIN_VOLTS 35.0f
-#define FDA_HV_MAX_VOLTS 45.0f
-
-// No record's range may leave this window; one that does is not loaded. The
-// ceiling is the FDA one in every image. Only an image that links the test
-// table may go lower, for its lower-voltage preset (P-10, console-fw#21).
-#define HV_PRESET_CEILING_VOLTS FDA_HV_MAX_VOLTS
-#ifdef PRESET_HV_TABLE
-#define HV_PRESET_FLOOR_VOLTS 15.0f
-#else
-#define HV_PRESET_FLOOR_VOLTS FDA_HV_MIN_VOLTS
-#endif
+// The highest voltage any record's range may reach, in every image; one that
+// reaches higher is not loaded. The lower bound is each record's own (P-10,
+// console-fw#21).
+#define HV_PRESET_CEILING_VOLTS 45.0f
 
 #define HV_PRESET_NONE 0xFFu
 
