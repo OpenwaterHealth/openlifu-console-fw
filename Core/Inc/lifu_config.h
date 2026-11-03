@@ -6,6 +6,7 @@
 #include "memory_map.h"
 #include <stdint.h>
 #include <stddef.h>
+#include <stdbool.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -28,6 +29,15 @@ extern "C" {
 // 2048 - 16 - 2 = 2030
 #define LIFU_CFG_JSON_MAX       (LIFU_CFG_PAGE_SIZE - LIFU_CFG_HEADER_SIZE)
 // -> 2030 bytes
+
+// Page 62 is shared with the odometer log (odometer.h): the config may only
+// occupy the lower 1 KB, so new JSON is capped at 1008 bytes including '\0'.
+// The RAM struct keeps the full-page size so a longer config written by older
+// firmware still loads; while one is stored the odometer is not persisted.
+// The header is unchanged (same LIFU_VER), so older firmware and the SDK still
+// read a config written in this layout.
+#define LIFU_CFG_SHARED_SIZE    (1024U)
+#define LIFU_CFG_JSON_LIMIT     (LIFU_CFG_SHARED_SIZE - LIFU_CFG_HEADER_SIZE)
 
 // Persistent config blob that exactly fills one flash page.
 typedef struct __attribute__((packed, aligned(4))) {
@@ -81,6 +91,15 @@ HAL_StatusTypeDef lifu_cfg_factory_reset(void);
 // - lifu_cfg_set_json() persists the provided JSON text into flash.
 const char *lifu_cfg_get_json_ptr(void);
 HAL_StatusTypeDef lifu_cfg_set_json(const char *json, size_t len);
+
+// True when the stored JSON fits in the lower 1 KB of page 62, leaving the
+// upper 1 KB to the odometer log.
+bool lifu_cfg_fits_shared_page(void);
+
+// Erases page 62, re-programs the current config unchanged (no seq bump),
+// then has the odometer restore its newest record. Used by the odometer when
+// its log is full, and by every config save.
+HAL_StatusTypeDef lifu_cfg_rewrite_page(void);
 
 // ======================== WIRE FORMAT (UART/USB) ========================
 // When sending config over the command interface, we serialize as:
