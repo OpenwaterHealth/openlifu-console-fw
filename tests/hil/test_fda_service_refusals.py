@@ -1,7 +1,8 @@
 """An FDA console refuses user-config writes and DFU entry (SR-021).
 
-Bench step 4.07. FDA images only (the `fda` fixture): on another image these
-commands would run, and DFU would leave the board in its bootloader. HV stays off.
+Bench step 4.07. Presets-only images only, +fda or +test (the `fda` fixture):
+on another image these commands would run, and DFU would leave the board in its
+bootloader. HV stays off.
 """
 
 import pytest
