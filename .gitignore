@@ -9,3 +9,5 @@
 *.launch
 
 platform.json
+
+__pycache__/
