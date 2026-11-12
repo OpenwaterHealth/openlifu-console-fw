@@ -30,6 +30,6 @@ voltage inside its range, or run one preset with `-k preset3`.
 
 | File | Bench step | HV | Checks |
 |---|---|---|---|
-| `test_fda_service_refusals.py` | 4.07 | off | `USR_CFG` write (reserved 1, the config as read) refused with 0xF8 and the config unchanged; `USR_CFG` read works; `DFU` with reserved 0 and 0x77 refused, and the board still answers as the same image |
+| `test_fda_service_refusals.py` | 4.07 | off | `USR_CFG` write (reserved 1, the config as read) refused with 0xF8 and the config unchanged; `USR_CFG` read works; `DFU` with reserved 0x77 refused, and with reserved 0 on `+fda` (a `+test` image enters the signed bootloader's DFU, so that case skips there), and the board still answers as the same image |
 | `test_preset_table.py` | 4.08 | off | the image links as many presets as its suffix names; each reports its own range, positive and no higher than 45 V; an index past the last is refused |
 | `test_fda_hv_presets.py` | 4.08 | on (`--hv-dummy-load`) | per preset: `SET_HV`, `SET_DACS`, `RAW_DAC` refused; a select with the wrong settings CRC refused (`0xF6`) and HV on then refused; HV on with nothing selected refused (`0xF7`); a select above or below the preset's range refused (`0xF1`); the applied voltage is the preset voltage × preset sensitivity ÷ TX sensitivity, the output settles there, and a select under a live rail is refused |

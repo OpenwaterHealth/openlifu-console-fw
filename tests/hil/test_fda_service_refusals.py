@@ -3,6 +3,10 @@
 Bench step 4.07. Presets-only images only, +fda or +test (the `fda` fixture):
 on another image these commands would run, and DFU would leave the board in its
 bootloader. HV stays off.
+
+A +test image still enters the signed bootloader's DFU (reserved 0), so units on
+the test presets can be updated over USB; that path is not run here, since it
+leaves the board in its bootloader. Both refuse the STM32 ROM loader (0x77).
 """
 
 import pytest
@@ -40,6 +44,8 @@ def test_user_config_write_is_refused(console, fda):
 
 @pytest.mark.parametrize("reserved", [0x00, 0x77], ids=["dfu", "rom-loader"])
 def test_dfu_is_refused(console, fda, reserved):
+    if reserved == 0x00 and fda.endswith("+test"):
+        pytest.skip("a +test image enters the signed bootloader's DFU")
     r = send_raw(console, OW_CMD, OW_CMD_DFU, reserved=reserved)
 
     assert r is not None, "no reply"

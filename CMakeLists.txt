@@ -188,6 +188,12 @@ if(FDA_MODE)
                             "generate it with the openlifu SDK.")
     endif()
     target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE FDA_MODE)
+    # A +test image keeps the signed-bootloader DFU entry, so factory and
+    # bench units on the test presets can be updated over USB again. A +fda
+    # image refuses it (SR-021, Core/Src/if_commands.c).
+    if(FW_PRESET_VARIANT STREQUAL "test")
+        target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE FDA_TEST_IMAGE)
+    endif()
     set(FW_BUILD_VARIANT "${FW_PRESET_VARIANT}")
 else()
     set(FW_BUILD_VARIANT "")
