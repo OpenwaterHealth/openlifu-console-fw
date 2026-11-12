@@ -379,7 +379,7 @@ static void POWER_ProcessCommand(UartPacket *uartResp, UartPacket cmd)
 				uartResp->packet_type = OW_ERROR;
 			}
 			break;
-		case OW_CMD_DFU:
+		case OW_CMD_DFU: {
 			uartResp->command = OW_CMD_DFU;
 #ifdef FDA_MODE
 			// FDA mode: no DFU entry (SR-021). A +test image (FDA_TEST_IMAGE)
@@ -415,6 +415,7 @@ static void POWER_ProcessCommand(UartPacket *uartResp, UartPacket cmd)
 				uartResp->packet_type = OW_ERROR;
 			}
 			break;
+		}
 		case OW_POWER_SET_DACS:
 			uartResp->command = OW_POWER_SET_DACS;
 			uartResp->addr = 0;
