@@ -1,6 +1,7 @@
 #include "lifu_config.h"
 
 #include "common.h" 
+#include "odometer.h"
 
 #include <string.h>
 #include <stdbool.h>
@@ -89,20 +90,23 @@ static bool lifu_cfg_is_valid(const lifu_cfg_t *cfg)
     return true;
 }
 
-// Do a complete write of g_cfg into flash page.
-// - bumps seq
-// - normalizes json
-// - recomputes crc
-// - erases page and writes words
-static HAL_StatusTypeDef lifu_cfg_writeback(void)
+static bool lifu_cfg_json_fits_shared(const lifu_cfg_t *cfg)
+{
+    return strnlen(cfg->json, LIFU_CFG_JSON_MAX) < LIFU_CFG_JSON_LIMIT;
+}
+
+// Erase page 62 and program g_cfg as it is in RAM.
+// When the JSON fits the lower 1 KB, only the header + JSON + '\0' words are
+// programmed (keeping the erase-to-done window short) and the odometer then
+// restores its record into the upper 1 KB. A longer config left by older
+// firmware is programmed in full, and the odometer log stays empty.
+static HAL_StatusTypeDef lifu_cfg_program_page(void)
 {
     HAL_StatusTypeDef st;
-
-    // bump monotonic sequence
-    g_cfg.seq++;
+    uint32_t len;
 
     lifu_cfg_normalize_json(&g_cfg);
-    g_cfg.crc = lifu_cfg_calc_crc(&g_cfg);
+    const bool shared = lifu_cfg_json_fits_shared(&g_cfg);
 
     // Erase page [ADDR_FLASH_PAGE_62 .. ADDR_FLASH_PAGE_63)
     st = Flash_Erase(LIFU_CFG_PAGE_ADDR, LIFU_CFG_PAGE_END);
@@ -110,12 +114,38 @@ static HAL_StatusTypeDef lifu_cfg_writeback(void)
         return st;
     }
 
-    // Program entire struct (full 2048 bytes)
+    if (shared) {
+        len = LIFU_CFG_HEADER_SIZE + (uint32_t)strnlen(g_cfg.json, LIFU_CFG_JSON_MAX) + 1U;
+        len = (len + 3U) & ~3U;
+    } else {
+        len = sizeof(lifu_cfg_t);
+    }
+
     st = Flash_Write(LIFU_CFG_PAGE_ADDR,
                      (uint32_t *)&g_cfg,
-                     (uint32_t)(sizeof(lifu_cfg_t) / sizeof(uint32_t)));
+                     len / sizeof(uint32_t));
+    if (st != HAL_OK) {
+        return st;
+    }
 
+    if (shared) {
+        st = Odometer_RestoreAfterErase();
+    }
     return st;
+}
+
+// Do a complete write of g_cfg into flash page.
+// - bumps seq
+// - recomputes crc
+// - erases page and writes words (lifu_cfg_program_page)
+static HAL_StatusTypeDef lifu_cfg_writeback(void)
+{
+    // bump monotonic sequence
+    g_cfg.seq++;
+
+    g_cfg.crc = lifu_cfg_calc_crc(&g_cfg);
+
+    return lifu_cfg_program_page();
 }
 
 // Raw load from flash into g_cfg
@@ -166,9 +196,11 @@ HAL_StatusTypeDef lifu_cfg_set_json(const char *json, size_t len)
 
     lifu_cfg_ensure_loaded();
 
-    // Copy up to max-1 so we can always NUL-terminate.
-    if (len >= LIFU_CFG_JSON_MAX) {
-        len = LIFU_CFG_JSON_MAX - 1U;
+    // The payload may carry a trailing '\0'. Reject JSON that would spill
+    // into the odometer half of the page rather than truncating it.
+    len = strnlen(json, len);
+    if (len >= LIFU_CFG_JSON_LIMIT) {
+        return HAL_ERROR;
     }
 
     memcpy(g_cfg.json, json, len);
@@ -176,6 +208,18 @@ HAL_StatusTypeDef lifu_cfg_set_json(const char *json, size_t len)
 
     // Persist.
     return lifu_cfg_writeback();
+}
+
+bool lifu_cfg_fits_shared_page(void)
+{
+    lifu_cfg_ensure_loaded();
+    return lifu_cfg_json_fits_shared(&g_cfg);
+}
+
+HAL_StatusTypeDef lifu_cfg_rewrite_page(void)
+{
+    lifu_cfg_ensure_loaded();
+    return lifu_cfg_program_page();
 }
 
 HAL_StatusTypeDef lifu_cfg_wire_read(const uint8_t **out_buf,
