@@ -26,6 +26,12 @@ static float last_set = -1.0f;
 
 bool getHVOnStatus(void) { return rail_on; }
 bool hv_set_voltage(float value) { last_set = value; return true; }
+// hv_monitor.c is the device's; here the setpoint calls only need to link.
+void hv_monitor_set_point(float v_set, float range_min, float range_max)
+{
+	(void)v_set; (void)range_min; (void)range_max;
+}
+void hv_monitor_clear_fault(void) {}
 
 // The firmware reads the records from the linker's _sfda_preset; here that is
 // the generated array itself.

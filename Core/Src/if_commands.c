@@ -12,6 +12,7 @@
 #include "i2c_master.h"
 #include "hv_supply.h"
 #include "hv_presets.h"
+#include "hv_monitor.h"
 #include "fan_driver.h"
 #include "lifu_config.h"
 #include "rgb.h"
@@ -111,6 +112,8 @@ static int32_t apply_rgb_fx(const UartPacket *cmd)
 
 static void POWER_ProcessCommand(UartPacket *uartResp, UartPacket cmd)
 {
+	// STATUS, and HV on refused while an HV fault is latched (hv_monitor.h).
+	if (hv_monitor_process(uartResp, &cmd)) return;
 #ifdef FDA_MODE
 	// The HV setpoint comes from the selected preset (hv_presets.h).
 	if (hv_presets_process(uartResp, &cmd)) return;
@@ -168,6 +171,7 @@ static void POWER_ProcessCommand(UartPacket *uartResp, UartPacket cmd)
 		case OW_POWER_HV_ON:
 			uartResp->command = OW_POWER_HV_ON;
 			HV_Enable();
+			hv_monitor_hv_enabled();
 			RGB_Set(RGB_BLUE);
 		    // start timer
 		    // HAL_TIM_Base_Start_IT(&htim6);
@@ -189,6 +193,8 @@ static void POWER_ProcessCommand(UartPacket *uartResp, UartPacket cmd)
 				float set_value = be_bytes_to_float((const uint8_t*)cmd.data, cmd.data_len);
 
 				hv_set_voltage(set_value);
+				hv_monitor_set_point(set_value, 0.0f, 0.0f);
+				hv_monitor_clear_fault();
 				// set_use_exact(false);
 			}else{
 				uartResp->packet_type = OW_ERROR;
@@ -203,11 +209,9 @@ static void POWER_ProcessCommand(UartPacket *uartResp, UartPacket cmd)
 			read_all_adc_channels(&vmon_adc, &vmon_adc_data);
 
 			ret_voltage = vmon_adc_data.converted[1];
+			uartResp->reserved = (uint8_t)hv_monitor_fault();
 			uartResp->data_len = 4;
 			uartResp->data = (uint8_t *)&ret_voltage;
-			break;
-		case OW_POWER_STATUS:
-			uartResp->command = OW_POWER_STATUS;
 			break;
 		case OW_POWER_GET_TEMP1:
 			// last_temperature1 = 30.0f + (rand() % 41);  // Random float between 30.0 and 70.0
@@ -432,6 +436,8 @@ static void POWER_ProcessCommand(UartPacket *uartResp, UartPacket cmd)
 		        DBG_PRINTF("Received HVM DAC Value: %u (0x%04X)\r\n", hvm_dac_value, hvm_dac_value);
 		        set_hvm(hvm_dac_value);
 		        set_use_exact(true);
+		        // Raw DAC values have no V_set to hold the rails to (hv_monitor.h).
+		        hv_monitor_set_point(0.0f, 0.0f, 0.0f);
 			}else{
 				uartResp->packet_type = OW_ERROR;
 				uartResp->data_len = 0;
@@ -457,6 +463,7 @@ static void POWER_ProcessCommand(UartPacket *uartResp, UartPacket cmd)
 
 			if(cmd.addr == 1){
 				HV_Enable();
+				hv_monitor_hv_enabled();
 			}else{
 				HV_Disable();
 			}
@@ -474,6 +481,7 @@ static void POWER_ProcessCommand(UartPacket *uartResp, UartPacket cmd)
 			}else{
 				uint16_t dac_raw = ((uint16_t)cmd.data[0] << 8) | (uint16_t)cmd.data[1];
 				HV_SetDACValue(cmd.addr, DAC_BIT_12, dac_raw);
+				hv_monitor_set_point(0.0f, 0.0f, 0.0f);
 			}
 			break;
 		default:

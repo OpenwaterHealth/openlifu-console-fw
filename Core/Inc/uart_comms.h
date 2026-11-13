@@ -14,6 +14,8 @@
 #include <stdbool.h>
 
 void comms_start_task(void);
+/** Work done while waiting for a command: watchdog check-in, HV monitor (main.c). */
+void comms_idle(void);
 void comms_handle_RxCpltCallback(const UART_HandleTypeDef *huart, uint16_t Size);
 void comms_handle_TxCallback(const UART_HandleTypeDef *huart);
 void CDC_handle_TxCpltCallback();

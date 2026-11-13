@@ -31,6 +31,7 @@
 #include "uart_comms.h"
 #include "fan_driver.h"
 #include "hv_supply.h"
+#include "hv_monitor.h"
 #include "utils.h"
 #include "rgb.h"
 
@@ -148,6 +149,23 @@ static inline void app_iwdg_refresh(void)
 {
   /* Bootloader enables IWDG before app jump; refresh it periodically. */
   IWDG->KR = 0xAAAAU;
+}
+
+/* TIM1 refreshes the IWDG only while the main loop keeps checking in, so a
+ * hung main loop (and with it the HV monitor, hv_monitor.h) resets the
+ * console, which comes up with HV off. Worst case from the hang to the reset:
+ * MAIN_LOOP_STALE_MS + one TIM1 period (1 s) + the IWDG timeout (5 s). */
+#define MAIN_LOOP_STALE_MS 1000U
+static volatile uint32_t main_loop_checkin;
+
+void app_watchdog_checkin(void)
+{
+  main_loop_checkin = HAL_GetTick();
+}
+
+static bool main_loop_alive(void)
+{
+  return HAL_GetTick() - main_loop_checkin <= MAIN_LOOP_STALE_MS;
 }
 
 /* USER CODE END PFP */
@@ -327,6 +345,7 @@ int main(void)
       DBG_PRINTF("Failed to initialize ADS8678\r\n");
   }
 
+  app_watchdog_checkin();
   if(HAL_TIM_Base_Start_IT(&htim1) != HAL_OK){
     Error_Handler();
   }
@@ -1080,6 +1099,12 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE BEGIN 4 */
 
+void comms_idle(void)
+{
+  app_watchdog_checkin();
+  hv_monitor_poll();
+}
+
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
 
@@ -1106,8 +1131,8 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
   /* USER CODE BEGIN Callback 0 */
-  if(htim->Instance == TIM1) {    
-    app_iwdg_refresh();
+  if(htim->Instance == TIM1) {
+    if (main_loop_alive()) app_iwdg_refresh();
   }
   
   if (htim->Instance == TIM14) {
