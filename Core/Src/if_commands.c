@@ -379,14 +379,24 @@ static void POWER_ProcessCommand(UartPacket *uartResp, UartPacket cmd)
 				uartResp->packet_type = OW_ERROR;
 			}
 			break;
-		case OW_CMD_DFU:
+		case OW_CMD_DFU: {
 			uartResp->command = OW_CMD_DFU;
 #ifdef FDA_MODE
-			// FDA mode: no DFU entry, the STM32 ROM loader (0x77) included.
-			uartResp->packet_type = OW_ERROR;
-			uartResp->reserved = OW_CODE_FDA_REFUSED;
-			uartResp->data_len = 0;
-			break;
+			// FDA mode: no DFU entry (SR-021). A +test image (FDA_TEST_IMAGE)
+			// still enters the signed bootloader's DFU, so a unit on the test
+			// presets can be updated over USB; neither enters the STM32 ROM
+			// loader (0x77), which takes unsigned images.
+#ifdef FDA_TEST_IMAGE
+			const bool dfu_refused = (cmd.reserved == 0x77);
+#else
+			const bool dfu_refused = true;
+#endif
+			if (dfu_refused) {
+				uartResp->packet_type = OW_ERROR;
+				uartResp->reserved = OW_CODE_FDA_REFUSED;
+				uartResp->data_len = 0;
+				break;
+			}
 #endif
 			uartResp->addr = cmd.addr;
 			uartResp->reserved = cmd.reserved;
@@ -405,6 +415,7 @@ static void POWER_ProcessCommand(UartPacket *uartResp, UartPacket cmd)
 				uartResp->packet_type = OW_ERROR;
 			}
 			break;
+		}
 		case OW_POWER_SET_DACS:
 			uartResp->command = OW_POWER_SET_DACS;
 			uartResp->addr = 0;
