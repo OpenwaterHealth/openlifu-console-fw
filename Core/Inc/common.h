@@ -12,6 +12,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include <string.h>
 
 #define COMMAND_MAX_SIZE 2080
 #define DATA_MAX_SIZE 2048
@@ -55,6 +56,14 @@ typedef enum {
 
 typedef enum {
 	OW_CODE_SUCCESS = 0x00,
+	// HV on refused: the HV rail monitor latched a fault (hv_monitor.h), both images.
+	OW_CODE_HV_FAULT = 0xF0,
+	// FDA mode refusals (hv_presets.c, if_commands.c).
+	OW_CODE_HV_RANGE = 0xF1,     // select: the rescaled voltage is outside the window
+	OW_CODE_PRESET_CRC = 0xF6,   // select: settings_crc is not the preset's
+	OW_CODE_NO_PRESET = 0xF7,    // HV on with no preset selected
+	OW_CODE_FDA_REFUSED = 0xF8,  // SET_HV, raw DACs, a select while HV is on,
+	                             // a USR_CFG write, or DFU
 	OW_CODE_IDENT_ERROR = 0xFD,
 	OW_CODE_DATA_ERROR = 0xFE,
 	OW_CODE_ERROR = 0xFF,
@@ -105,6 +114,9 @@ typedef enum {
 	OW_POWER_RAW_DAC = 0x41,
 	OW_POWER_HV_ENABLE = 0x42,
 	OW_POWER_SET_RGB_FX = 0x43,
+	OW_POWER_PRESET_GET = 0x44,     // FDA mode: reserved=0 -> the preset's HV entry
+	OW_POWER_PRESET_SELECT = 0x45,  // FDA mode: reserved=0, data=settings_crc u32 + transmitter
+	                                //   sensitivity f32 (LE) -> voltage applied f32. No data deselects
 } UstxPowerCommands;
 
 /* OW_POWER_SET_RGB_FX payload (cmd.data, little-endian):
@@ -136,6 +148,15 @@ typedef struct  {
 	uint8_t* data;
 	uint16_t crc;
 } UartPacket;
+
+// An OW_ERROR reply: code in reserved, an ASCII reason (a string literal) as data.
+static inline void ow_refuse(UartPacket *uartResp, uint8_t code, const char *reason)
+{
+	uartResp->packet_type = OW_ERROR;
+	uartResp->reserved = code;
+	uartResp->data = (uint8_t *)reason;
+	uartResp->data_len = (uint16_t)strlen(reason);
+}
 
 typedef struct  {
 	uint32_t magic_num;

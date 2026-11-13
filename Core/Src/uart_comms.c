@@ -82,7 +82,9 @@ void comms_start_task() {
     tx_flag = 0;
     CDC_ReceiveToIdle(rxBuffer, COMMAND_MAX_SIZE);
     while(1) {
-		while(!rx_flag);
+		while(!rx_flag) {
+			comms_idle();
+		}
 
         int bufferIndex = 0;
 
