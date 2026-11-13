@@ -45,7 +45,7 @@
 #define HV_MONITOR_PERIOD_MS   50u
 #define HV_MONITOR_SETTLE_MS   1000u
 #define HV_MONITOR_TRIP_COUNT  3u
-#define HV_MONITOR_TOL         0.05f
+#define HV_MONITOR_TOL         0.03f
 
 #define HV_MONITOR_STATUS_VERSION 1u
 #define HV_MONITOR_STATUS_LEN     36u
