@@ -128,6 +128,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Core/Src/hv_calibration_coeffs.c
     Core/Src/hv_supply.c
     Core/Src/hv_presets.c
+    Core/Src/hv_monitor.c
     Core/Src/i2c_master.c
     Core/Src/if_commands.c
     Core/Src/jsmn.c

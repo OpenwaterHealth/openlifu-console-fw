@@ -2,6 +2,7 @@
 
 #ifdef FDA_MODE
 
+#include "hv_monitor.h"
 #include "hv_supply.h"
 
 #include <float.h>
@@ -17,14 +18,6 @@ typedef struct {
 	float window[2];        // lowest, highest voltage a select may arrive at
 	uint32_t size;          // bytes the record takes, CRC included
 } HvPreset;
-
-static void refuse(UartPacket *uartResp, uint8_t code, const char *why)
-{
-	uartResp->packet_type = OW_ERROR;
-	uartResp->reserved = code;
-	uartResp->data = (uint8_t *)why;
-	uartResp->data_len = (uint16_t)strlen(why);
-}
 
 static uint32_t rd_u32(const uint8_t *p)
 {
@@ -121,11 +114,11 @@ static void preset_get(UartPacket *uartResp, const UartPacket *cmd)
 	HvPreset p;
 
 	if (cmd->reserved >= PRESET_HV_COUNT) {
-		refuse(uartResp, OW_CODE_DATA_ERROR, "no such preset");
+		ow_refuse(uartResp, OW_CODE_DATA_ERROR, "no such preset");
 		return;
 	}
 	if (!stored_preset(cmd->reserved, &p)) {
-		refuse(uartResp, OW_CODE_DATA_ERROR, "no preset stored");
+		ow_refuse(uartResp, OW_CODE_DATA_ERROR, "no preset stored");
 		return;
 	}
 	reply[0] = (uint8_t)PRESET_HV_COUNT;
@@ -146,41 +139,48 @@ static void preset_select(UartPacket *uartResp, const UartPacket *cmd)
 {
 	// Never under a live rail, where it would change the output.
 	if (getHVOnStatus()) {
-		refuse(uartResp, OW_CODE_FDA_REFUSED, "HV is on, turn it off to select a preset");
+		ow_refuse(uartResp, OW_CODE_FDA_REFUSED, "HV is on, turn it off to select a preset");
 		return;
 	}
-	// Anything but a successful select leaves nothing selected.
+	// Anything but a successful select leaves nothing selected. Only a
+	// successful one, deselect included, clears a latched HV fault.
 	selected = HV_PRESET_NONE;
 	applied = 0.0f;
+	hv_monitor_set_point(0.0f, 0.0f, 0.0f);
 	// No payload: the host is clearing the selection.
-	if (cmd->data_len == 0U) return;
+	if (cmd->data_len == 0U) {
+		hv_monitor_clear_fault();
+		return;
+	}
 
 	HvPreset p;
 	if (cmd->data == NULL || cmd->data_len != 8U || cmd->reserved >= PRESET_HV_COUNT) {
-		refuse(uartResp, OW_CODE_DATA_ERROR, "need a preset index, its settings_crc and the transmitter sensitivity");
+		ow_refuse(uartResp, OW_CODE_DATA_ERROR, "need a preset index, its settings_crc and the transmitter sensitivity");
 		return;
 	}
 	if (!stored_preset(cmd->reserved, &p)) {
-		refuse(uartResp, OW_CODE_DATA_ERROR, "no preset stored");
+		ow_refuse(uartResp, OW_CODE_DATA_ERROR, "no preset stored");
 		return;
 	}
 	if (rd_u32(&cmd->data[0]) != p.settings_crc) {
-		refuse(uartResp, OW_CODE_PRESET_CRC, "settings_crc is not this preset's");
+		ow_refuse(uartResp, OW_CODE_PRESET_CRC, "settings_crc is not this preset's");
 		return;
 	}
 	float transmitter;
 	memcpy(&transmitter, &cmd->data[4], 4);
 	if (!positive(transmitter)) {
-		refuse(uartResp, OW_CODE_DATA_ERROR, "transmitter sensitivity must be a positive number");
+		ow_refuse(uartResp, OW_CODE_DATA_ERROR, "transmitter sensitivity must be a positive number");
 		return;
 	}
 	// A less sensitive transmitter needs proportionally more voltage for the same output.
 	float volts = p.voltage * p.sensitivity / transmitter;
 	if (!(volts >= p.window[0] && volts <= p.window[1])) {
-		refuse(uartResp, OW_CODE_HV_RANGE, "the voltage for this transmitter is outside the preset's range");
+		ow_refuse(uartResp, OW_CODE_HV_RANGE, "the voltage for this transmitter is outside the preset's range");
 		return;
 	}
 	hv_set_voltage(volts);
+	hv_monitor_set_point(volts, p.window[0], p.window[1]);
+	hv_monitor_clear_fault();
 	selected = cmd->reserved;
 	applied = volts;
 	uartResp->data = (uint8_t *)&applied;
@@ -218,11 +218,11 @@ bool hv_presets_process(UartPacket *uartResp, const UartPacket *cmd)
 
 	switch (cmd->command) {
 	case OW_POWER_SET_HV:
-		refuse(uartResp, OW_CODE_FDA_REFUSED, "the voltage comes from the selected preset");
+		ow_refuse(uartResp, OW_CODE_FDA_REFUSED, "the voltage comes from the selected preset");
 		break;
 	case OW_POWER_SET_DACS:
 	case OW_POWER_RAW_DAC:
-		refuse(uartResp, OW_CODE_FDA_REFUSED, "raw DAC writes are refused in FDA mode");
+		ow_refuse(uartResp, OW_CODE_FDA_REFUSED, "raw DAC writes are refused in FDA mode");
 		break;
 	case OW_POWER_PRESET_GET:
 		preset_get(uartResp, cmd);
@@ -231,7 +231,7 @@ bool hv_presets_process(UartPacket *uartResp, const UartPacket *cmd)
 		preset_select(uartResp, cmd);
 		break;
 	default:   // HV on with nothing selected
-		refuse(uartResp, OW_CODE_NO_PRESET, "no preset selected");
+		ow_refuse(uartResp, OW_CODE_NO_PRESET, "no preset selected");
 		break;
 	}
 	return true;

@@ -55,6 +55,8 @@ extern "C" {
 void Error_Handler(void);
 
 /* USER CODE BEGIN EFP */
+/** The main loop is alive: keeps the TIM1 watchdog refresh going (main.c). */
+void app_watchdog_checkin(void);
 
 /* USER CODE END EFP */
 

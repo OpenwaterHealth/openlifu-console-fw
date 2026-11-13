@@ -12,6 +12,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include <string.h>
 
 #define COMMAND_MAX_SIZE 2080
 #define DATA_MAX_SIZE 2048
@@ -55,6 +56,8 @@ typedef enum {
 
 typedef enum {
 	OW_CODE_SUCCESS = 0x00,
+	// HV on refused: the HV rail monitor latched a fault (hv_monitor.h), both images.
+	OW_CODE_HV_FAULT = 0xF0,
 	// FDA mode refusals (hv_presets.c, if_commands.c).
 	OW_CODE_HV_RANGE = 0xF1,     // select: the rescaled voltage is outside the window
 	OW_CODE_PRESET_CRC = 0xF6,   // select: settings_crc is not the preset's
@@ -145,6 +148,15 @@ typedef struct  {
 	uint8_t* data;
 	uint16_t crc;
 } UartPacket;
+
+// An OW_ERROR reply: code in reserved, an ASCII reason (a string literal) as data.
+static inline void ow_refuse(UartPacket *uartResp, uint8_t code, const char *reason)
+{
+	uartResp->packet_type = OW_ERROR;
+	uartResp->reserved = code;
+	uartResp->data = (uint8_t *)reason;
+	uartResp->data_len = (uint16_t)strlen(reason);
+}
 
 typedef struct  {
 	uint32_t magic_num;

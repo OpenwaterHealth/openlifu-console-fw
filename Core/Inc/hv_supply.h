@@ -54,6 +54,7 @@ uint16_t set_hvm(uint16_t value);
 uint16_t set_hvp(uint16_t value);
 void set_current_dac(void);
 void read_all_adc_channels(ADS8678__HandleTypeDef *adc, ADC_ChannelData_t *output);
+bool hv_read_rails(float *hvp, float *hvm);
 bool hv_set_voltage(float value);
 
 #endif // HV_SUPPLY_MANAGER_H
