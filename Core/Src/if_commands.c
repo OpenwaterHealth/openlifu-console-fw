@@ -407,11 +407,11 @@ static void POWER_ProcessCommand(UartPacket *uartResp, UartPacket cmd)
 			uartResp->data_len = 0;
 
 			_enter_dfu = true;
-			if(cmd.reserved == 0x77){
-				_force_stm32_dfu = true;
-			}else{
-				_force_stm32_dfu = false;
-			}
+#ifdef FDA_MODE
+			_force_stm32_dfu = false;   // 0x77 (the ROM loader) was refused above
+#else
+			_force_stm32_dfu = (cmd.reserved == 0x77);
+#endif
 			__HAL_TIM_CLEAR_FLAG(&htim17, TIM_FLAG_UPDATE);
 			__HAL_TIM_SET_COUNTER(&htim17, 0);
 
