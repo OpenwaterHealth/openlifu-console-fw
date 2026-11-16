@@ -7,6 +7,7 @@
 
 #include "if_commands.h"
 #include "main.h"
+#include "odometer.h"
 #include "uart_comms.h"
 #include "utils.h"
 #include <string.h>
@@ -82,7 +83,10 @@ void comms_start_task() {
     tx_flag = 0;
     CDC_ReceiveToIdle(rxBuffer, COMMAND_MAX_SIZE);
     while(1) {
-		while(!rx_flag);
+		while(!rx_flag) {
+			// Idle: the main context's only chance to do background work.
+			Odometer_Service();
+		}
 
         int bufferIndex = 0;
 

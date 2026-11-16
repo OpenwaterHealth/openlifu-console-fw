@@ -105,7 +105,17 @@ typedef enum {
 	OW_POWER_RAW_DAC = 0x41,
 	OW_POWER_HV_ENABLE = 0x42,
 	OW_POWER_SET_RGB_FX = 0x43,
+	/* 0x44-0x45 are taken by the FDA HV preset commands (feature/fda-hv-presets). */
+	OW_POWER_GET_ODO = 0x46,
+	OW_POWER_RESET_ODO = 0x47,
 } UstxPowerCommands;
+
+/* OW_POWER_GET_ODO response (8 bytes, little-endian):
+ *   [0..3] uint32 power_on_s  seconds the console firmware has run, lifetime
+ *   [4..7] uint32 hv_on_s     seconds the HV supply has been enabled, lifetime
+ * OW_POWER_RESET_ODO: cmd.reserved selects 0 = power-on, 1 = HV-on, 2 = both;
+ * the cleared totals are saved before the response. OW_ERROR on a bad target
+ * or a failed save. */
 
 /* OW_POWER_SET_RGB_FX payload (cmd.data, little-endian):
  *   byte 0    effect id (RgbFxId)

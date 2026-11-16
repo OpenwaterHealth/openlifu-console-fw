@@ -13,6 +13,7 @@
 #include "hv_supply.h"
 #include "fan_driver.h"
 #include "lifu_config.h"
+#include "odometer.h"
 #include "rgb.h"
 #include "rgb_led.h"
 #include "rgb_effects.h"
@@ -30,6 +31,7 @@ extern MAX31875_Init_t temp_sensor_2;
 extern FAN_Driver fan[2];
 
 static uint32_t id_words[3] = {0};
+static uint32_t odo_words[2] = {0};
 static float ret_voltage = 0;
 static ADC_ChannelData_t vmon_adc_data;
 volatile float last_temperature1 = 0;
@@ -356,6 +358,7 @@ static void POWER_ProcessCommand(UartPacket *uartResp, UartPacket cmd)
 			uartResp->reserved = 0;
 			uartResp->data_len = 0;
 
+			(void)Odometer_Flush();
 			_enter_dfu = false;
 			__HAL_TIM_CLEAR_FLAG(&htim17, TIM_FLAG_UPDATE);
 			__HAL_TIM_SET_COUNTER(&htim17, 0);
@@ -370,6 +373,7 @@ static void POWER_ProcessCommand(UartPacket *uartResp, UartPacket cmd)
 			uartResp->reserved = cmd.reserved;
 			uartResp->data_len = 0;
 
+			(void)Odometer_Flush();
 			_enter_dfu = true;
 			if(cmd.reserved == 0x77){
 				_force_stm32_dfu = true;
@@ -441,6 +445,24 @@ static void POWER_ProcessCommand(UartPacket *uartResp, UartPacket cmd)
 			}else{
 				uint16_t dac_raw = ((uint16_t)cmd.data[0] << 8) | (uint16_t)cmd.data[1];
 				HV_SetDACValue(cmd.addr, DAC_BIT_12, dac_raw);
+			}
+			break;
+		case OW_POWER_GET_ODO:
+			uartResp->command = OW_POWER_GET_ODO;
+			uartResp->addr = cmd.addr;
+			uartResp->reserved = cmd.reserved;
+			odo_words[0] = Odometer_Get_PowerOn_Seconds();
+			odo_words[1] = Odometer_Get_HvOn_Seconds();
+			uartResp->data_len = sizeof(odo_words);
+			uartResp->data = (uint8_t *)odo_words;
+			break;
+		case OW_POWER_RESET_ODO:
+			uartResp->command = OW_POWER_RESET_ODO;
+			uartResp->addr = cmd.addr;
+			uartResp->reserved = cmd.reserved;
+			if (cmd.reserved > (uint8_t)ODO_RESET_BOTH ||
+				Odometer_Reset((OdoResetTarget)cmd.reserved) != HAL_OK) {
+				uartResp->packet_type = OW_ERROR;
 			}
 			break;
 		default:
