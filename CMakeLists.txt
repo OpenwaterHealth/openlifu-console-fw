@@ -52,15 +52,7 @@ endif()
 
 string(TIMESTAMP FW_BUILD_TIME_UTC "%Y-%m-%d %H:%M:%S UTC" UTC)
 
-message(STATUS "FW version   : ${FW_GIT_DESCRIBE}")
-message(STATUS "FW git sha   : ${FW_GIT_SHA}")
-message(STATUS "FW build time: ${FW_BUILD_TIME_UTC}")
-
-configure_file(
-    ${CMAKE_SOURCE_DIR}/version.h.in
-    ${CMAKE_BINARY_DIR}/generated/version.h
-    @ONLY
-)
+# version.h is configured below, once FDA_MODE sets the build variant.
 
 # Set the project name
 set(CMAKE_PROJECT_NAME lifu-console-fw)
@@ -86,6 +78,8 @@ add_executable(${CMAKE_PROJECT_NAME})
 #   BARE_METAL=ON            : standalone image at 0x08000000 (no bootloader).
 # An explicit -DFLASH_LINKER_SCRIPT=... still overrides this selection.
 option(BARE_METAL "Build a bare-metal image (no custom bootloader; runs at 0x08000000)" OFF)
+# FDA_MODE (below) also sizes the app and the preset region in the linker script.
+option(FDA_MODE "The preset's HV entry, linked in at page 61" OFF)
 if(NOT DEFINED FLASH_LINKER_SCRIPT)
     if(BARE_METAL)
         set(FLASH_LINKER_SCRIPT "${CMAKE_SOURCE_DIR}/STM32F072XX_FLASH.ld")
@@ -93,9 +87,15 @@ if(NOT DEFINED FLASH_LINKER_SCRIPT)
         set(FLASH_LINKER_SCRIPT "${CMAKE_SOURCE_DIR}/STM32F072XX_FLASH_BL.ld")
     endif()
 endif()
-message(STATUS "Linker script: ${FLASH_LINKER_SCRIPT}")
+if(FDA_MODE)
+    set(FDA_LAYOUT 1)
+else()
+    set(FDA_LAYOUT 0)
+endif()
+message(STATUS "Linker script: ${FLASH_LINKER_SCRIPT} (FDA layout: ${FDA_LAYOUT})")
 target_link_options(${CMAKE_PROJECT_NAME} PRIVATE
     -T "${FLASH_LINKER_SCRIPT}"
+    "-Wl,--defsym=FDA_MODE=${FDA_LAYOUT}"
 )
 
 # Debug console output (USART3). The board brings out no serial header, so
@@ -127,6 +127,8 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Core/Src/flash_eeprom.c
     Core/Src/hv_calibration_coeffs.c
     Core/Src/hv_supply.c
+    Core/Src/hv_presets.c
+    Core/Src/hv_monitor.c
     Core/Src/i2c_master.c
     Core/Src/if_commands.c
     Core/Src/jsmn.c
@@ -148,6 +150,76 @@ target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
 # Add project symbols (macros)
 target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user defined symbols
+)
+
+# ---------------------------
+# FDA mode
+# ---------------------------
+# FDA_MODE links the presets' HV entries into page 61, the end of the
+# bootloader's slot. The console applies the selected preset's voltage
+# when the host selects it, and refuses OW_POWER_SET_HV and the raw DAC
+# commands (Core/Inc/hv_presets.h).
+#
+# A presets-only (FDA_MODE) image reports which preset set it carries:
+# "fda" (the released preset) or "test" (the test presets). It must match a
+# preset context in openlifu-diathermy-application.
+set(FW_PRESET_VARIANT "fda" CACHE STRING "Preset set in a presets-only image: fda or test")
+set_property(CACHE FW_PRESET_VARIANT PROPERTY STRINGS fda test)
+if(NOT FW_PRESET_VARIANT MATCHES "^(fda|test)$")
+    message(FATAL_ERROR "FW_PRESET_VARIANT must be fda or test, not '${FW_PRESET_VARIANT}'.")
+endif()
+
+# One preset is linked from fda_preset.h; several from preset_hv_table.h
+# (the SDK's generate_console_presets). Each record carries its own voltage
+# range, held under the one fixed 45 V ceiling (Core/Inc/hv_presets.h), so
+# either header may go with either FW_PRESET_VARIANT.
+if(FDA_MODE)
+    set(FDA_PRESET_HEADER "${CMAKE_SOURCE_DIR}/Core/Inc/presets/fda_preset.h")
+    set(PRESET_HV_TABLE_HEADER "${CMAKE_SOURCE_DIR}/Core/Inc/presets/preset_hv_table.h")
+    if(EXISTS "${FDA_PRESET_HEADER}" AND EXISTS "${PRESET_HV_TABLE_HEADER}")
+        message(FATAL_ERROR "Core/Inc/presets holds both fda_preset.h and preset_hv_table.h; "
+                            "keep only the one for this preset set.")
+    elseif(EXISTS "${PRESET_HV_TABLE_HEADER}")
+        target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE HV_PRESET_TABLE_IMAGE)
+        message(STATUS "FDA mode    : ON (preset table at page 61)")
+    elseif(EXISTS "${FDA_PRESET_HEADER}")
+        message(STATUS "FDA mode    : ON (preset at page 61)")
+    else()
+        message(FATAL_ERROR "FDA_MODE needs ${FDA_PRESET_HEADER} or ${PRESET_HV_TABLE_HEADER}: "
+                            "generate it with the openlifu SDK.")
+    endif()
+    target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE FDA_MODE)
+    # A +test image keeps the signed-bootloader DFU entry, so factory and
+    # bench units on the test presets can be updated over USB again. A +fda
+    # image refuses it (SR-021, Core/Src/if_commands.c).
+    if(FW_PRESET_VARIANT STREQUAL "test")
+        target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE FDA_TEST_IMAGE)
+    endif()
+    set(FW_BUILD_VARIANT "${FW_PRESET_VARIANT}")
+else()
+    set(FW_BUILD_VARIANT "")
+    message(STATUS "FDA mode    : OFF (host sets the HV voltage)")
+endif()
+
+# OW_CMD_VERSION returns FW_VERSION. A presets-only image appends
+# "+<FW_PRESET_VARIANT>" (semver build metadata), so the host can tell which
+# preset set it carries without writing to the device. Any other build has no
+# suffix: all commands are enabled and the host treats it as a development or
+# service image. The suffixes match the transmitter firmware's.
+if(FW_BUILD_VARIANT)
+    set(FW_VERSION_STRING "${FW_GIT_DESCRIBE}+${FW_BUILD_VARIANT}")
+else()
+    set(FW_VERSION_STRING "${FW_GIT_DESCRIBE}")
+endif()
+
+message(STATUS "FW version   : ${FW_VERSION_STRING}")
+message(STATUS "FW git sha   : ${FW_GIT_SHA}")
+message(STATUS "FW build time: ${FW_BUILD_TIME_UTC}")
+
+configure_file(
+    ${CMAKE_SOURCE_DIR}/version.h.in
+    ${CMAKE_BINARY_DIR}/generated/version.h
+    @ONLY
 )
 
 # Remove wrong libob.a library dependency when using cpp files

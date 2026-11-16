@@ -26,6 +26,7 @@ static uint16_t current_hvm_val = 0;
 static bool _use_exact = false;
 
 extern SPI_HandleTypeDef hspi1;
+extern ADS8678__HandleTypeDef vmon_adc;
 
 static HAL_StatusTypeDef HV_DAC_ReadReg(uint32_t *data) {
     uint8_t rxBuffer[4];
@@ -166,6 +167,7 @@ void HV_Enable(void) {
         	hvp_value = current_hvp_val;
         HV_SetDACValue(DAC_CHANNEL_HVP, DAC_BIT_12, hvp_value);
         delay_ms(PAUSE_DURATION_MS);
+        app_watchdog_checkin();   // the ramp takes seconds (main.c)
     }
     
     HV_SetDACValue(DAC_CHANNEL_HVP, DAC_BIT_12, current_hvp_val);
@@ -177,6 +179,7 @@ void HV_Enable(void) {
         	hvm_value = current_hvm_val;
         HV_SetDACValue(DAC_CHANNEL_HVM, DAC_BIT_12, hvm_value);
         delay_ms(PAUSE_DURATION_MS);
+        app_watchdog_checkin();   // the ramp takes seconds (main.c)
     }
 
     HV_SetDACValue(DAC_CHANNEL_HVM, DAC_BIT_12, current_hvm_val);
@@ -267,6 +270,18 @@ bool get12VOnStatus()
         // Pin is LOW
         return false;
     }
+}
+
+// The rails the HV monitor holds to its window: HVP (ch1, what OW_POWER_GET_HV
+// reports) and HVM (ch3, negative). False when either read fails.
+bool hv_read_rails(float *hvp, float *hvm)
+{
+    uint16_t raw_p, raw_m;
+    if (ADS8678_ReadChannelManual(&vmon_adc, 1, &raw_p) != HAL_OK) return false;
+    if (ADS8678_ReadChannelManual(&vmon_adc, 3, &raw_m) != HAL_OK) return false;
+    *hvp = pos_adc_ch1_to_voltage(raw_p);
+    *hvm = neg_adc_ch3_to_voltage(raw_m);
+    return true;
 }
 
 /**

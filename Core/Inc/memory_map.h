@@ -93,6 +93,8 @@
 #define METADATA_ADDRESS        			((uint32_t)0x08007800)
 #define APPLICATION_ADDRESS     			((uint32_t)0x08008000)
 #define APPLICATION_USER_CONFIG    			((uint32_t)0x0801F800) // 2 KB user config region
+// FDA mode: the preset's HV entry, linked into the slot's last page (the FDA linker scripts).
+#define FDA_PRESET_ADDRESS                  ADDR_FLASH_PAGE_61
 #define APPLICATION_MAX_SIZE                ((uint32_t)(94U * 1024U))
 
 #define SRAM_BASE_ADDRESS       			((uint32_t)0x20000000)
