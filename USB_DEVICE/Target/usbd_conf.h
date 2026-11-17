@@ -96,10 +96,13 @@
 #define USBD_free           USBD_static_free
 
 /** Alias for memory set. */
-#define USBD_memset         /* Not used */
+/* USB Device Library v2.11.6 zeroes class handles with USBD_memset on every
+ * class init (usbd_cdc.c); an empty alias would leave stale state after a
+ * USB reconnect. */
+#define USBD_memset         memset
 
 /** Alias for memory copy. */
-#define USBD_memcpy         /* Not used */
+#define USBD_memcpy         memcpy
 
 /** Alias for delay. */
 #define USBD_Delay          HAL_Delay
