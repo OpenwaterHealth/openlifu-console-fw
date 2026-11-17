@@ -84,8 +84,13 @@ def mcu_family(root: Path) -> str:
 
 
 def hal_version(root: Path, fam: str) -> str | None:
-    return triple(root / f"Drivers/STM32{fam}xx_HAL_Driver/Src/stm32{fam.lower()}xx_hal.c",
-                  f"__STM32{fam}xx_HAL_VERSION")
+    # F0 names it __STM32F0xx_HAL_VERSION_*, L4 STM32L4XX_HAL_VERSION_*.
+    f = root / f"Drivers/STM32{fam}xx_HAL_Driver/Src/stm32{fam.lower()}xx_hal.c"
+    for prefix in (f"__STM32{fam}xx_HAL_VERSION", f"STM32{fam.upper()}XX_HAL_VERSION", f"__STM32{fam.upper()}XX_HAL_VERSION"):
+        v = triple(f, prefix)
+        if v:
+            return v
+    return None
 
 
 def cmsis_device_version(root: Path, fam: str) -> str | None:
@@ -234,6 +239,11 @@ def main() -> int:
     # ---- derived from the tree / build image --------------------------------------
     fl = fam.lower()
     hal = hal_version(root, fam)
+    if not hal or not cmsis_device_version(root, fam):
+        # Never emit an SBOM that silently lacks the HAL or the CMSIS device files.
+        print(f"[gen_sbom] cannot read the STM32{fam}xx HAL / CMSIS Device version macros; "
+              "update hal_version() / cmsis_device_version() for this family", file=sys.stderr)
+        return 2
     if hal:
         components.append(comp(f"STM32{fam}xx HAL Driver", hal, supplier=st_supplier(),
                                purl=f"pkg:github/STMicroelectronics/stm32{fl}xx-hal-driver@v{hal}",
