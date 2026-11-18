@@ -77,28 +77,28 @@
  #define ADDR_FLASH_PAGE_62    ((uint32_t)0x0801F000) /* Base @ of Page 62, 2 Kbytes */
  #define ADDR_FLASH_PAGE_63    ((uint32_t)0x0801F800) /* Base @ of Page 63, 2 Kbytes */
 
- /* proposed memory map 128 bytes 0-1023 indexes total 128KB Flash 6KB  EEPROM 20KB RAM
- 	INDEX_0 				Bootloader					0x08000000		64K
- 	INDEX_128 				Application					0x08010000		64K
- 	INDEX_640 				Application					0x08020000		64K
- 	EEPROM_1			    Config						0x08080000
- 	EEPROM_2			    Config						0x08080C00
- */
-
-#define EEPROM_SIZE             			((uint32_t)0xC00)    // in bytes
-
-#define FLASH_START_ADDRESS        			((uint32_t)0x08000000)
-#define FLASH_END_ADDRESS				    ((uint32_t)0x08020000)
-#define BOOTLOADER_ADDRESS        			((uint32_t)0x08000000)
-#define METADATA_ADDRESS        			((uint32_t)0x08007800)
-#define APPLICATION_ADDRESS     			((uint32_t)0x08008000)
-#define APPLICATION_USER_CONFIG    			((uint32_t)0x0801F800) // 2 KB user config region
+/* Flash layout: the secure bootloader's (open-lifu-console-bl Core/Inc/memory_map.h,
+ * Linker/mapping_fwimg.ld). STM32F072xB: 128 KB flash in 2 KB pages, 16 KB SRAM.
+ *   pages  0-31  0x08000000  64 KB  bootloader (SBSFU + SE)
+ *   pages 32-61  0x08010000  60 KB  application slot: signed header, then the image at +0x400
+ *   page  62     0x0801F000   2 KB  runtime config (lifu_config.c), outside the slot
+ *   page  63     0x0801F800   2 KB  user config
+ * The bootloader invalidates an image whose slot holds anything past the image,
+ * so persistent data must never be written inside the slot. */
+#define FLASH_START_ADDRESS                 ADDR_FLASH_PAGE_0
+#define FLASH_END_ADDRESS                   ((uint32_t)0x08020000)
+#define BOOTLOADER_ADDRESS                  ADDR_FLASH_PAGE_0
+#define APPLICATION_ADDRESS                 ADDR_FLASH_PAGE_32 // slot start: signed header
+#define APPLICATION_IMAGE_OFFSET            ((uint32_t)0x400)  // the image runs at the slot start + 0x400
+#define APPLICATION_SLOT_SIZE               ((uint32_t)(ADDR_FLASH_PAGE_62 - ADDR_FLASH_PAGE_32))
+#define APPLICATION_MAX_SIZE                (APPLICATION_SLOT_SIZE - APPLICATION_IMAGE_OFFSET)
+#define APPLICATION_RUNTIME_CONFIG          ADDR_FLASH_PAGE_62
+#define APPLICATION_USER_CONFIG             ADDR_FLASH_PAGE_63 // 2 KB user config region
 // FDA mode: the preset's HV entry, linked into the slot's last page (the FDA linker scripts).
 #define FDA_PRESET_ADDRESS                  ADDR_FLASH_PAGE_61
-#define APPLICATION_MAX_SIZE                ((uint32_t)(94U * 1024U))
 
-#define SRAM_BASE_ADDRESS       			((uint32_t)0x20000000)
-#define SRAM_SIZE			       			((uint32_t)0x5000)
+#define SRAM_BASE_ADDRESS                   ((uint32_t)0x20000000)
+#define SRAM_SIZE                           ((uint32_t)0x4000) // 16 KB
 
 #ifdef __cplusplus
 }
