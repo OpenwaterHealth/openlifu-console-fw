@@ -108,6 +108,13 @@ if(ENABLE_DEBUG_PRINT)
 endif()
 message(STATUS "Debug print : ${ENABLE_DEBUG_PRINT}")
 
+# Only a bare-metal image may enter the STM32 ROM loader (Core/Src/main.c,
+# Core/Src/if_commands.c); slot builds compile that code out. Set before
+# add_subdirectory() so main.c (a CubeMX source) sees it too.
+if(BARE_METAL)
+    add_compile_definitions(BARE_METAL)
+endif()
+
 # Add STM32CubeMX generated sources
 add_subdirectory(cmake/stm32cubemx)
 
