@@ -25,7 +25,6 @@
 #include <time.h>    // For seeding random number generator
 
 extern bool _enter_dfu;
-extern bool _force_stm32_dfu;
 extern ADS8678__HandleTypeDef vmon_adc;
 extern MAX31875_Init_t temp_sensor_1;
 extern MAX31875_Init_t temp_sensor_2;
@@ -385,33 +384,38 @@ static void POWER_ProcessCommand(UartPacket *uartResp, UartPacket cmd)
 			break;
 		case OW_CMD_DFU: {
 			uartResp->command = OW_CMD_DFU;
-#ifdef FDA_MODE
-			// FDA mode: no DFU entry (SR-021). A +test image (FDA_TEST_IMAGE)
-			// still enters the signed bootloader's DFU, so a unit on the test
-			// presets can be updated over USB; neither enters the STM32 ROM
-			// loader (0x77), which takes unsigned images.
-#ifdef FDA_TEST_IMAGE
-			const bool dfu_refused = (cmd.reserved == 0x77);
-#else
+			// Where DFU goes is fixed by the build, not by the request:
+			//  - slot builds (research, clinical): the secure bootloader's DFU,
+			//    signed images only. They cannot reach the STM32 ROM loader,
+			//    which takes unsigned images, so the old ROM-loader request
+			//    (reserved 0x77) is refused.
+			//  - bare metal (developer builds, no bootloader): the ROM loader,
+			//    the only DFU there is (main.c).
+			//  - FDA mode: no DFU entry (SR-021), except a +test image
+			//    (FDA_TEST_IMAGE), so a unit on the test presets can still be
+			//    updated over USB.
+#if defined(FDA_MODE) && !defined(FDA_TEST_IMAGE)
 			const bool dfu_refused = true;
+#elif defined(BARE_METAL)
+			const bool dfu_refused = false;
+#else
+			const bool dfu_refused = (cmd.reserved == 0x77);
 #endif
 			if (dfu_refused) {
 				uartResp->packet_type = OW_ERROR;
+#ifdef FDA_MODE
 				uartResp->reserved = OW_CODE_FDA_REFUSED;
+#else
+				uartResp->reserved = OW_CODE_ERROR;
+#endif
 				uartResp->data_len = 0;
 				break;
 			}
-#endif
 			uartResp->addr = cmd.addr;
 			uartResp->reserved = cmd.reserved;
 			uartResp->data_len = 0;
 
 			_enter_dfu = true;
-#ifdef FDA_MODE
-			_force_stm32_dfu = false;   // 0x77 (the ROM loader) was refused above
-#else
-			_force_stm32_dfu = (cmd.reserved == 0x77);
-#endif
 			__HAL_TIM_CLEAR_FLAG(&htim17, TIM_FLAG_UPDATE);
 			__HAL_TIM_SET_COUNTER(&htim17, 0);
 
