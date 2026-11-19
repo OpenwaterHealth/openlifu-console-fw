@@ -17,6 +17,13 @@
 #define COMMAND_MAX_SIZE 2080
 #define DATA_MAX_SIZE 2048
 
+/* OW_CMD_SIGCHK reply payload: a status byte, then for a slot build the
+ * signed SBSFU header from the slot start. The host checks the header's
+ * ECDSA signature against a public key (openlifu-sdk check_signature). */
+#define SIGCHK_SLOT_IMAGE  0x00U   /* data[1..320]: the signed header */
+#define SIGCHK_BARE_METAL  0x01U   /* no bootloader, so no signed header */
+#define SIGCHK_HEADER_LEN  320U    /* sizeof(SE_FwRawHeaderTypeDef) */
+
 #ifndef FW_VERSION
 #define FW_VERSION "unknown"
 #endif
@@ -76,6 +83,7 @@ typedef enum {
 	OW_CMD_ECHO = 0x03,
 	OW_CMD_TOGGLE_LED = 0x04,
 	OW_CMD_HWID = 0x05,
+	OW_CMD_SIGCHK = 0x08,      // signature check: the signed header, or bare metal
 	OW_CMD_USR_CFG = 0x0A,
 	OW_CMD_DFU = 0x0D,
 	OW_CMD_NOP = 0x0E,

@@ -31,6 +31,7 @@ extern MAX31875_Init_t temp_sensor_2;
 extern FAN_Driver fan[2];
 
 static uint32_t id_words[3] = {0};
+static uint8_t sigchk_reply[1U + SIGCHK_HEADER_LEN];   // OW_CMD_SIGCHK
 static float ret_voltage = 0;
 static ADC_ChannelData_t vmon_adc_data;
 volatile float last_temperature1 = 0;
@@ -158,6 +159,23 @@ static void POWER_ProcessCommand(UartPacket *uartResp, UartPacket cmd)
 			id_words[2] = HAL_GetUIDw2();
 			uartResp->data_len = 16;
 			uartResp->data = (uint8_t *)&id_words;
+			break;
+		case OW_CMD_SIGCHK:
+			// The host verifies the signature (SR-021): a slot build sends the
+			// signed header the bootloader checked at boot; a bare-metal build
+			// has none and says so.
+			uartResp->command = OW_CMD_SIGCHK;
+			uartResp->addr = cmd.addr;
+			uartResp->reserved = cmd.reserved;
+#ifdef BARE_METAL
+			sigchk_reply[0] = SIGCHK_BARE_METAL;
+			uartResp->data_len = 1U;
+#else
+			sigchk_reply[0] = SIGCHK_SLOT_IMAGE;
+			memcpy(&sigchk_reply[1], (const void *)APPLICATION_ADDRESS, SIGCHK_HEADER_LEN);
+			uartResp->data_len = sizeof(sigchk_reply);
+#endif
+			uartResp->data = sigchk_reply;
 			break;
 		case OW_POWER_12V_ON:
 			uartResp->command = OW_POWER_12V_ON;
