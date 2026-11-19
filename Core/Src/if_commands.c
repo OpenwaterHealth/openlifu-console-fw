@@ -312,77 +312,54 @@ static void POWER_ProcessCommand(UartPacket *uartResp, UartPacket cmd)
 			}
 
 			break;
-		case OW_POWER_GET_12VON:
-			uartResp->command = OW_POWER_GET_12VON;
-			if(get12VOnStatus()){
-				uartResp->reserved = 1;
-			}else{
-				uartResp->reserved = 0;
-			}
+		case OW_CMD_USR_CFG: {
+			// reserved == 0: READ
+			// reserved == 1: WRITE (cmd.data is JSON text)
+			const uint8_t *wire_buf = NULL;
+			uint16_t wire_len = 0;
 
-			break;
-		case OW_CMD_USR_CFG:
-            // reserved == 0: READ
-            // reserved == 1: WRITE (cmd.data is JSON text)
 			uartResp->id = cmd.id;
 			uartResp->command = OW_CMD_USR_CFG;
+
+			if (cmd.reserved == OW_USR_CFG_WRITE) {
 #ifdef FDA_MODE
-			// FDA mode: the user config is read-only; a service build writes it.
-			if (cmd.reserved == 1) {
-				uartResp->packet_type = OW_ERROR;
+				// User config is read-only in FDA mode; only a service build may write it.
 				uartResp->reserved = OW_CODE_FDA_REFUSED;
-				uartResp->data_len = 0;
-				break;
-			}
+				goto usr_cfg_error;
+#else
+				if (cmd.data == NULL || cmd.data_len == 0 ||
+				    lifu_cfg_wire_write(cmd.data, cmd.data_len) != HAL_OK) {
+					goto usr_cfg_error;
+				}
 #endif
-            if (cmd.reserved == 0) {
-                const uint8_t *wire_buf = NULL;
-                uint16_t wire_len = 0;
-                const uint16_t max_payload = (uint16_t)(DATA_MAX_SIZE);
-                if (lifu_cfg_wire_read(&wire_buf, &wire_len, max_payload) != HAL_OK || wire_buf == NULL) {
-                    uartResp->packet_type = OW_ERROR;
-                    uartResp->data_len = 0;
-                    uartResp->data = NULL;
-                    break;
-                }
+			} else if (cmd.reserved != OW_USR_CFG_READ) {
+				goto usr_cfg_error;
+			}
 
-                uartResp->data_len = wire_len;
-                uartResp->data = (uint8_t *)wire_buf;
-            }
-            else if (cmd.reserved == 1) {
-                if (cmd.data == NULL || cmd.data_len == 0) {
-                    uartResp->packet_type = OW_ERROR;
-                    uartResp->data_len = 0;
-                    uartResp->data = NULL;
-                    break;
-                }
+			// Both READ (full payload) and WRITE (header ACK) finish by reading the wire buffer.
+			if (lifu_cfg_wire_read(&wire_buf, &wire_len, (uint16_t)DATA_MAX_SIZE) != HAL_OK ||
+			    wire_buf == NULL) {
+				goto usr_cfg_error;
+			}
 
-                if (lifu_cfg_wire_write(cmd.data, cmd.data_len) != HAL_OK) {
-                    uartResp->packet_type = OW_ERROR;
-                    uartResp->data_len = 0;
-                    uartResp->data = NULL;
-                    break;
-                }
+			if (cmd.reserved == OW_USR_CFG_WRITE) {
+				if (wire_len < sizeof(lifu_cfg_wire_hdr_t)) {
+					goto usr_cfg_error;
+				}
+				uartResp->data_len = (uint16_t)sizeof(lifu_cfg_wire_hdr_t);
+			} else {
+				uartResp->data_len = wire_len;
+			}
 
-                // Return the updated header as an ACK payload.
-                const uint8_t *wire_buf = NULL;
-                uint16_t wire_len = 0;
-                const uint16_t max_payload = (uint16_t)(DATA_MAX_SIZE);
-                if (lifu_cfg_wire_read(&wire_buf, &wire_len, max_payload) != HAL_OK || wire_buf == NULL) {
-                    uartResp->packet_type = OW_ERROR;
-                    uartResp->data_len = 0;
-                    uartResp->data = NULL;
-                    break;
-                }
-                uartResp->data_len = (uint16_t)sizeof(lifu_cfg_wire_hdr_t);
-                uartResp->data = (uint8_t *)wire_buf;
-            }
-            else {
-                uartResp->packet_type = OW_ERROR;
-                uartResp->data_len = 0;
-                uartResp->data = NULL;
-            }
-            break;
+			uartResp->data = (uint8_t *)wire_buf;
+			break;
+
+		usr_cfg_error:
+			uartResp->packet_type = OW_ERROR;
+			uartResp->data_len = 0;
+			uartResp->data = NULL;
+			break;
+		}
 		case OW_CMD_NOP:
 			uartResp->command = OW_CMD_NOP;
 			break;
