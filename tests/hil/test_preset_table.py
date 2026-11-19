@@ -1,7 +1,7 @@
-"""A presets-only console links the presets its suffix names (SR-003).
+"""An FDA console serves the presets its preset page holds (SR-003).
 
-HV stays off. +fda links one preset and +test four, in the transmitter's
-order (index 0 is the FDA preset). Each reports its own voltage range, which
+HV stays off. The released set holds one preset and the test set four, in
+the transmitter's order (index 0 is the FDA preset). Each reports its own voltage range, which
 no image lets reach above 45 V (Core/Inc/hv_presets.h).
 """
 
@@ -12,8 +12,8 @@ from openlifu_sdk.io.exceptions import LIFUDeviceError
 CEILING_V = 45.0
 
 
-def test_the_image_links_the_presets_its_suffix_names(console, fda):
-    count = preset_count(fda)
+def test_the_console_serves_the_stored_presets(console, fda):
+    count = preset_count(console)
     presets = [console.get_preset(i) for i in range(count)]
     for i, p in enumerate(presets):
         print(f"{i}: {p['id']} {p['voltage']:g} V @ {p['sensitivity']:g}, "

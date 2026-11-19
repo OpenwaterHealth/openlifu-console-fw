@@ -1,15 +1,19 @@
 /*
  * hv_presets.h
  *
- * FDA mode: the HV setpoint comes from the preset, not the host. The image
- * carries each preset's HV entry at page 61: its voltage, the transmitter
- * sensitivity that voltage suits, and the settings_crc of its .json.
+ * Presets: each one's HV entry — its voltage, the transmitter sensitivity
+ * that voltage suits, the settings_crc of its .json, and its voltage range —
+ * read from the preset page (page 61, preset_store.h), not linked into the
+ * image. One firmware release serves every build:
  *
- *   +fda  one PRESET_HV_RECORD (Core/Inc/presets/fda_preset.h).
- *   +test PRESET_HV_COUNT records back to back, in the transmitter's preset
- *         order (Core/Inc/presets/preset_hv_table.h).
+ *   all builds   OW_POWER_PRESET_GET / _SELECT / _INFO read and select presets.
+ *   research,    OW_POWER_PRESET_WRITE / _COMMIT write a package into the page.
+ *   bare metal   The host may still set the HV voltage directly.
+ *   FDA_MODE     The clinical build: the page is read-only, the HV setpoint
+ *                comes only from the selected preset, HV stays off until a
+ *                select succeeds, and OW_POWER_SET_HV and the raw DAC
+ *                commands are refused.
  *
- * Each record carries its preset's voltage_range, and a select is held to it.
  * No record may reach above HV_PRESET_CEILING_VOLTS.
  *
  * OW_POWER_PRESET_SELECT (reserved = preset index) gives the settings_crc and
@@ -17,16 +21,12 @@
  *
  *     voltage x preset sensitivity / transmitter sensitivity
  *
- * if that is inside the preset's range. HV stays off until a select succeeds,
- * and the selection cannot change while HV is on. A refused select, or one
- * with no payload, leaves nothing selected. OW_POWER_SET_HV and the raw DAC
- * commands are refused.
+ * if that is inside the preset's range. The selection cannot change while HV
+ * is on. A refused select, or one with no payload, leaves nothing selected.
  */
 
 #ifndef INC_HV_PRESETS_H_
 #define INC_HV_PRESETS_H_
-
-#ifdef FDA_MODE
 
 #include "common.h"
 
@@ -58,9 +58,13 @@
 
 #define HV_PRESET_NONE 0xFFu
 
+/* OW_POWER_PRESET_INFO: reply reserved byte; data = the 320-byte package
+ * header when PRESET_INFO_OK. */
+#define PRESET_INFO_OK       0x00u  /* a package whose records all parse */
+#define PRESET_INFO_EMPTY    0x01u  /* no valid package in the page */
+#define PRESET_INFO_NO_PAGE  0x02u  /* no preset page: bootloader before 1.1.0-rc.2 */
+
 /** Answer the preset commands and refuse what FDA mode forbids. False lets the command through. */
 bool hv_presets_process(UartPacket *uartResp, const UartPacket *cmd);
-
-#endif /* FDA_MODE */
 
 #endif /* INC_HV_PRESETS_H_ */

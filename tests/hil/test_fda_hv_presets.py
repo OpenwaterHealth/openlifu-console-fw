@@ -2,9 +2,9 @@
 
 Bench step 4.08. Every test here may turn the HV rail on, so all of them skip
 unless --hv-dummy-load is given (conftest.py): put the console's HV output on a
-dummy load first. Presets-only images only: each preset test runs for every
-preset the image links (one on +fda, four on +test) and is held to that
-preset's own voltage range. Each test starts and ends with HV off and nothing
+dummy load first. FDA build only: each preset test runs for every preset the
+preset page holds (one for the released set, four for the test set) and is
+held to that preset's own voltage range. Each test starts and ends with HV off and nothing
 selected.
 """
 
@@ -27,7 +27,7 @@ from openlifu_sdk.io.LIFUConfig import (
 
 pytestmark = pytest.mark.hv
 
-# The most presets any image links (+test).
+# The most presets any released preset set holds (the test set).
 MAX_PRESETS = 4
 # How close the measured output must settle to the applied setpoint.
 SETTLE_RANGE_V = 2.0
@@ -36,9 +36,9 @@ OFF_V = 5.0
 
 
 @pytest.fixture(params=range(MAX_PRESETS), ids=lambda i: f"preset{i}")
-def preset_index(request, fda):
-    if request.param >= preset_count(fda):
-        pytest.skip(f"{fda} links {preset_count(fda)} preset(s)")
+def preset_index(request, console, fda):
+    if request.param >= preset_count(console):
+        pytest.skip(f"the preset page holds {preset_count(console)} preset(s)")
     return request.param
 
 

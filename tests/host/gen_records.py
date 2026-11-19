@@ -1,23 +1,26 @@
 # SPDX-License-Identifier: Apache-2.0
-"""The console's preset headers for the host tests (PRESET_HV_RECORD in
-Core/Inc/hv_presets.h).
+"""Preset records and packages for the host tests (PRESET_HV_RECORD in
+Core/Inc/hv_presets.h, the PRS1 package in Core/Inc/preset_store.h).
 
 The openlifu SDK writes the real ones (LIFUTXPresets.console_preset_record,
-generate_console_fda_preset, generate_console_presets). This writes the same
-bytes from plain values, so the tests can also write records the SDK never
-would; test_hv_presets.py checks the two agree when the SDK is installed.
-
-* one preset  -> fda_preset.h, FDA_PRESET_HV[], linked by an "fda" image;
-* N presets   -> preset_hv_table.h, PRESET_HV_TABLE[], the records back to
-  back, linked by a "test" image.
+LIFUPresetPackage.build_preset_package). This writes the same bytes from
+plain values, so the tests can also write records and packages the SDK never
+would; test_hv_presets.py checks the records agree when the SDK is installed.
+The firmware does not check the package signature (the bootloader does, on a
+DFU write), so these packages carry a zero signature.
 """
 
 from __future__ import annotations
 
+import hashlib
 import struct
 import zlib
 
 MAGIC = b"OWHV"
+PKG_MAGIC = b"PRS1"
+HEADER_LEN = 320          # the body starts here
+PAGE_SIZE = 2048
+CONTEXTS = {"fda": 1, "test": 2}
 
 
 def record(pid: str, settings_crc: int, voltage: float, sensitivity: float,
@@ -30,30 +33,16 @@ def record(pid: str, settings_crc: int, voltage: float, sensitivity: float,
     return head + struct.pack("<I", zlib.crc32(head) & 0xFFFFFFFF)
 
 
-def _bytes(data: bytes) -> list[str]:
-    return ["\t" + " ".join("0x%02x," % b for b in data[i:i + 16]) for i in range(0, len(data), 16)]
-
-
-def fda_preset_header(rec: bytes) -> str:
-    return "\n".join([
-        "#include <stdint.h>",
-        '__attribute__((section(".fda_preset"), used))',
-        "static const uint8_t FDA_PRESET_HV[%u] = {" % len(rec),
-        *_bytes(rec),
-        "};",
-        "",
-    ])
-
-
-def preset_hv_table_header(records: list[bytes], context: str) -> str:
-    blob = b"".join(records)
-    return "\n".join([
-        "#include <stdint.h>",
-        '#define PRESET_HV_CONTEXT_NAME "%s"' % context,
-        "#define PRESET_HV_COUNT %uu" % len(records),
-        '__attribute__((section(".fda_preset"), used))',
-        "static const uint8_t PRESET_HV_TABLE[%u] = {" % len(blob),
-        *_bytes(blob),
-        "};",
-        "",
-    ])
+def package(records: list[bytes], context: str = "test", diathermy_sha: str = "ab" * 20,
+            body_size: int | None = None) -> bytes:
+    """A PRS1 package: the SFU1-layout header (zero signature), then the records.
+    body_size overrides the header's body size, to write a mismatched one."""
+    body = b"".join(records)
+    tag = hashlib.sha256(body).digest()
+    size = len(body) if body_size is None else body_size
+    reserved = bytes.fromhex(diathermy_sha) + bytes([CONTEXTS[context]]) + bytes(7)
+    auth = struct.pack("<4sHHIII32s32s16s28s", PKG_MAGIC, 1, 0, size, 0, size, tag, tag,
+                       bytes(16), reserved)
+    header = auth + bytes(64) + b"\xFF" * 96 + bytes(32)
+    assert len(header) == HEADER_LEN
+    return header + body

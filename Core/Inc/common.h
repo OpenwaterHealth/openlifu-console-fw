@@ -122,9 +122,12 @@ typedef enum {
 	OW_POWER_RAW_DAC = 0x41,
 	OW_POWER_HV_ENABLE = 0x42,
 	OW_POWER_SET_RGB_FX = 0x43,
-	OW_POWER_PRESET_GET = 0x44,     // FDA mode: reserved=0 -> the preset's HV entry
-	OW_POWER_PRESET_SELECT = 0x45,  // FDA mode: reserved=0, data=settings_crc u32 + transmitter
+	OW_POWER_PRESET_GET = 0x44,     // reserved=index -> that preset's HV entry (hv_presets.c)
+	OW_POWER_PRESET_SELECT = 0x45,  // reserved=index, data=settings_crc u32 + transmitter
 	                                //   sensitivity f32 (LE) -> voltage applied f32. No data deselects
+	OW_POWER_PRESET_INFO = 0x46,    // -> reserved=PRESET_INFO_*, data=the package header (320 B)
+	OW_POWER_PRESET_WRITE = 0x47,   // research/bare metal: data=offset u16 + bytes; FDA refuses
+	OW_POWER_PRESET_COMMIT = 0x48,  // research/bare metal: data=length u32 + CRC-32 u32; FDA refuses
 } UstxPowerCommands;
 
 /* OW_POWER_SET_RGB_FX payload (cmd.data, little-endian):
