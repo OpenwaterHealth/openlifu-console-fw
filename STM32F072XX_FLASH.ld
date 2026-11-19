@@ -53,15 +53,13 @@
 ENTRY(Reset_Handler)
 
 /* Specify the memory areas */
-/* FDA builds (CMake: -Wl,--defsym=FDA_MODE=1) link the preset into the end of
-   the app slot. */
-FDA_LAYOUT = DEFINED(FDA_MODE) ? FDA_MODE : 0;
+/* Bare metal: no bootloader. The presets are read from page 61 (0x0801E800,
+   preset_store.c), as under the bootloader; FLASH stays well below it. */
 
 MEMORY
 {
 RAM (xrw)      : ORIGIN = 0x200000C0, LENGTH = 0x3F40
 FLASH (rx)      : ORIGIN = 0x8000000, LENGTH = 100K /* pages 0-49 in every mode */
-FDA_PRESET (r)  : ORIGIN = 0x0801E800, LENGTH = FDA_LAYOUT ? 2K : 0 /* FDA: page 61, as under the bootloader */
 }
 
 /* Highest address of the user mode stack */
@@ -242,14 +240,6 @@ SECTIONS
   } >RAM
 
 
-
-  /* FDA mode's preset (Core/Inc/presets/fda_preset.h). Empty in other builds;
-     its zero-length region turns a stray .fda_preset into a link error. */
-  .fda_preset :
-  {
-    _sfda_preset = .;
-    KEEP(*(.fda_preset))
-  } >FDA_PRESET
 
   /* Remove information from the standard libraries */
   /DISCARD/ :

@@ -1,15 +1,13 @@
-"""An FDA console refuses user-config writes and DFU entry (SR-021).
+"""An FDA console refuses user-config writes and the STM32 ROM loader (SR-021).
 
-Bench step 4.07. Presets-only images only, +fda or +test (the `fda` fixture):
-on another image these commands would run, and DFU would leave the board in its
-bootloader. HV stays off.
+Bench step 4.07. FDA build only (the `fda` fixture): on another build the
+config write would run. HV stays off.
 
-A +test image still enters the signed bootloader's DFU (reserved 0), so units on
-the test presets can be updated over USB; that path is not run here, since it
-leaves the board in its bootloader. Both refuse the STM32 ROM loader (0x77).
+The FDA build enters the signed bootloader's DFU (reserved 0), so the clinical
+firmware updater can update it over USB; that path is not run here, since it
+leaves the board in its bootloader. It refuses the STM32 ROM loader (0x77).
 """
 
-import pytest
 from conftest import send_raw
 from openlifu_sdk.io.LIFUConfig import (
     OW_CMD,
@@ -42,11 +40,8 @@ def test_user_config_write_is_refused(console, fda):
     assert _read_config_wire(console) == before, "the config changed (seq included)"
 
 
-@pytest.mark.parametrize("reserved", [0x00, 0x77], ids=["dfu", "rom-loader"])
-def test_dfu_is_refused(console, fda, reserved):
-    if reserved == 0x00 and fda.endswith("+test"):
-        pytest.skip("a +test image enters the signed bootloader's DFU")
-    r = send_raw(console, OW_CMD, OW_CMD_DFU, reserved=reserved)
+def test_rom_loader_is_refused(console, fda):
+    r = send_raw(console, OW_CMD, OW_CMD_DFU, reserved=0x77)
 
     assert r is not None, "no reply"
     assert (r.packet_type, r.reserved) == (OW_ERROR, OW_HV_FDA_REFUSED)

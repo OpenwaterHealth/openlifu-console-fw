@@ -114,10 +114,9 @@ static void POWER_ProcessCommand(UartPacket *uartResp, UartPacket cmd)
 {
 	// STATUS, and HV on refused while an HV fault is latched (hv_monitor.h).
 	if (hv_monitor_process(uartResp, &cmd)) return;
-#ifdef FDA_MODE
-	// The HV setpoint comes from the selected preset (hv_presets.h).
+	// Presets, in every build; in FDA mode the HV setpoint comes only from the
+	// selected preset (hv_presets.h).
 	if (hv_presets_process(uartResp, &cmd)) return;
-#endif
 
 	switch (cmd.command)
 	{
@@ -386,12 +385,10 @@ static void POWER_ProcessCommand(UartPacket *uartResp, UartPacket cmd)
 			//    (reserved 0x77) is refused.
 			//  - bare metal (developer builds, no bootloader): the ROM loader,
 			//    the only DFU there is (main.c).
-			//  - FDA mode: no DFU entry (SR-021), except a +test image
-			//    (FDA_TEST_IMAGE), so a unit on the test presets can still be
-			//    updated over USB.
-#if defined(FDA_MODE) && !defined(FDA_TEST_IMAGE)
-			const bool dfu_refused = true;
-#elif defined(BARE_METAL)
+			// The clinical (FDA) build enters DFU like any slot build: its
+			// bootloader takes only images signed with the clinical key, and
+			// the clinical firmware updater updates it that way.
+#if defined(BARE_METAL)
 			const bool dfu_refused = false;
 #else
 			const bool dfu_refused = (cmd.reserved == 0x77);

@@ -121,6 +121,16 @@ jobs:
             ghcr.io/openwaterhealth/stm32-build-env:latest \
             bash -lc "git config --global --add safe.directory /workspace && cmake --preset Release-BareMetal && cmake --build build/Release-BareMetal --config Release --target all -j 10"
 
+      # Clinical (FDA_MODE) build, compiled here as a check only: the clinical
+      # pipeline builds, signs (Cloud KMS) and publishes it; nothing here does.
+      - name: Build clinical image (FDA_MODE, check only)
+        run: |
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE":/workspace \
+            -w /workspace \
+            ghcr.io/openwaterhealth/stm32-build-env:latest \
+            bash -lc "git config --global --add safe.directory /workspace && cmake --preset Release-FDA && cmake --build build/Release-FDA --config Release --target all -j 10"
+
       # ---------------------------
       # Resolve which open-lifu-console-bl release to bundle. Uses the
       # workflow_dispatch input when given. Otherwise:
