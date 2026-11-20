@@ -121,8 +121,9 @@ jobs:
             ghcr.io/openwaterhealth/stm32-build-env:latest \
             bash -lc "git config --global --add safe.directory /workspace && cmake --preset Release-BareMetal && cmake --build build/Release-BareMetal --config Release --target all -j 10"
 
-      # Clinical (FDA_MODE) build, compiled here as a check only: the clinical
-      # pipeline builds, signs (Cloud KMS) and publishes it; nothing here does.
+      # Clinical (FDA_MODE) build, compiled here as a check only: clinical-build.yml
+      # builds it from a tag, signs it with the Cloud KMS key on approval and
+      # stores it in the artifact bucket; nothing here does.
       - name: Build clinical image (FDA_MODE, check only)
         run: |
           docker run --rm \
