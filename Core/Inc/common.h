@@ -88,6 +88,7 @@ typedef enum {
 	OW_CMD_DFU = 0x0D,
 	OW_CMD_NOP = 0x0E,
 	OW_CMD_RESET = 0x0F,
+	OW_CMD_BL_VERSION = 0x70,  // the bootloader version text (no NUL); empty if none
 } UstxGlobalCommands;
 
 typedef enum {

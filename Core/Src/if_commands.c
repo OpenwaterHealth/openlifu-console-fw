@@ -52,6 +52,59 @@ static void print_uart_packet(const UartPacket* packet) {
     DBG_PRINTF("\r\n");
 }
 
+/* OW_CMD_BL_VERSION: the installed bootloader's version, read without DFU
+ * (SR-021). Every bootloader generation (1.0.x, 1.1.x) has the USB product
+ * string "OW DFU " FW_VERSION in its flash (open-lifu-console-bl usbd_desc.c);
+ * the version is the [0-9A-Za-z.+-] run after the tag, at most 32 bytes.
+ * RDP1/WRP do not block CPU reads. The bootloader region is scanned once and
+ * the reply points into flash. Not found, or bare metal: empty (len 0). */
+#define BL_VERSION_TAG      "OW DFU "
+#define BL_VERSION_TAG_LEN  (sizeof(BL_VERSION_TAG) - 1U)
+#define BL_VERSION_MAX      32U
+
+#ifndef BARE_METAL
+static bool bl_version_char(uint8_t c)
+{
+	return (c >= (uint8_t)'0' && c <= (uint8_t)'9') || (c >= (uint8_t)'A' && c <= (uint8_t)'Z')
+	    || (c >= (uint8_t)'a' && c <= (uint8_t)'z') || c == (uint8_t)'.' || c == (uint8_t)'+'
+	    || c == (uint8_t)'-';
+}
+#endif
+
+static uint16_t bl_version(const uint8_t **text)
+{
+#ifdef BARE_METAL
+	*text = NULL;
+	return 0U;
+#else
+	static const uint8_t *found = NULL;
+	static uint16_t found_len = 0U;
+	static bool scanned = false;
+
+	if (!scanned) {
+		const uint8_t *flash = (const uint8_t *)BOOTLOADER_ADDRESS;
+		const uint32_t size = APPLICATION_ADDRESS - BOOTLOADER_ADDRESS;
+		for (uint32_t i = 0U; (found == NULL) && (i + BL_VERSION_TAG_LEN <= size); i++) {
+			if (flash[i] != (uint8_t)'O' || memcmp(&flash[i], BL_VERSION_TAG, BL_VERSION_TAG_LEN) != 0) {
+				continue;
+			}
+			const uint32_t start = i + BL_VERSION_TAG_LEN;
+			uint32_t n = 0U;
+			while (n < BL_VERSION_MAX && start + n < size && bl_version_char(flash[start + n])) {
+				n++;
+			}
+			if (n > 0U) {
+				found = &flash[start];
+				found_len = (uint16_t)n;
+			}
+		}
+		scanned = true;
+	}
+	*text = found;
+	return found_len;
+#endif
+}
+
 /* Parse and apply an OW_POWER_SET_RGB_FX payload (layout in common.h).
  * Returns 0 on success, -1 on malformed payload / unknown effect. */
 static int32_t apply_rgb_fx(const UartPacket *cmd)
@@ -176,6 +229,16 @@ static void POWER_ProcessCommand(UartPacket *uartResp, UartPacket cmd)
 #endif
 			uartResp->data = sigchk_reply;
 			break;
+		case OW_CMD_BL_VERSION: {
+			// A read, allowed in every build including clinical (FDA_MODE).
+			const uint8_t *bl_text = NULL;
+			uartResp->command = OW_CMD_BL_VERSION;
+			uartResp->addr = cmd.addr;
+			uartResp->reserved = cmd.reserved;
+			uartResp->data_len = bl_version(&bl_text);
+			uartResp->data = (uint8_t *)bl_text;
+			break;
+		}
 		case OW_POWER_12V_ON:
 			uartResp->command = OW_POWER_12V_ON;
 			HAL_GPIO_WritePin(V12_ENABLE_GPIO_Port, V12_ENABLE_Pin, GPIO_PIN_SET);
