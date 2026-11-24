@@ -374,6 +374,15 @@ static void POWER_ProcessCommand(UartPacket *uartResp, UartPacket cmd)
 			}
 
 			break;
+		case OW_POWER_GET_12VON:
+			uartResp->command = OW_POWER_GET_12VON;
+			if(get12VOnStatus()){
+				uartResp->reserved = 1;
+			}else{
+				uartResp->reserved = 0;
+			}
+
+			break;
 		case OW_CMD_USR_CFG: {
 			// reserved == 0: READ
 			// reserved == 1: WRITE (cmd.data is JSON text)
