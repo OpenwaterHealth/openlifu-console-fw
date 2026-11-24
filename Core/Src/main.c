@@ -53,7 +53,6 @@
 
 #define BL_BKP_SIGNATURE           (0x4F57424CU) /* 'OWBL' */
 #define BL_BKP_REQ_DFU_MAGIC       (0x21554644U) /* 'DFU!' -> Open-LIFU bootloader DFU */
-#define BL_BKP_REQ_STM32_DFU_MAGIC (0x53554644U) /* 'DFUS' -> STM32 system bootloader */
 
 static void bl_bkp_enable(void)
 {
@@ -70,6 +69,39 @@ static void bl_bkp_enable(void)
 		SET_BIT(RCC->BDCR, RCC_BDCR_RTCEN);
 	}
 }
+
+#ifdef BARE_METAL
+/* Bare-metal (developer) builds only. With no bootloader, the STM32 ROM loader
+ * is the only DFU: OW_CMD_DFU leaves this request in BKP1R and resets, and
+ * main() calls rom_dfu_enter_if_requested() first, with every peripheral still
+ * in its reset state. Slot builds (research and clinical, behind the secure
+ * bootloader) compile none of this: the ROM loader takes unsigned images, so
+ * they have no way to reach it. No bootloader reads this word. */
+#define APP_BKP_REQ_ROM_DFU_MAGIC  (0x53554644U) /* 'DFUS' */
+#define STM32_SYSTEM_MEMORY_BASE   (0x1FFFC800U) /* STM32F072 ROM loader (AN2606) */
+
+static void rom_dfu_enter_if_requested(void)
+{
+	bl_bkp_enable();
+	if ((RTC->BKP0R != BL_BKP_SIGNATURE) || (RTC->BKP1R != APP_BKP_REQ_ROM_DFU_MAGIC))
+	{
+		return;
+	}
+	RTC->BKP1R = 0U;   /* one-shot: the next reset boots the application */
+
+	/* Map the system memory at 0x0 so the ROM loader runs with its own vector
+	 * table (the Cortex-M0 has no VTOR), then start it as a reset would. The
+	 * IWDG is not running: MX_IWDG_Init() has not been called on this boot and
+	 * a software reset stops it (IWDG_SW=1 units). */
+	__HAL_RCC_SYSCFG_CLK_ENABLE();
+	__HAL_SYSCFG_REMAPMEMORY_SYSTEMFLASH();
+	const uint32_t rom_sp    = *(volatile const uint32_t *)STM32_SYSTEM_MEMORY_BASE;
+	const uint32_t rom_reset = *(volatile const uint32_t *)(STM32_SYSTEM_MEMORY_BASE + 4U);
+	__set_MSP(rom_sp);
+	((void (*)(void))rom_reset)();
+	for (;;) { }
+}
+#endif /* BARE_METAL */
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -111,7 +143,6 @@ extern FAN_Driver fan[2];
 LifuConfig config;
 
 volatile bool _enter_dfu = false;
-volatile bool _force_stm32_dfu = false;
 
 /* USER CODE END PV */
 
@@ -185,7 +216,9 @@ int main(void)
 {
 
   /* USER CODE BEGIN 1 */
-
+#ifdef BARE_METAL
+  rom_dfu_enter_if_requested();   /* before any peripheral is touched */
+#endif
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -1157,20 +1190,15 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
       HAL_TIM_Base_Stop_IT(htim);
 
       if(_enter_dfu){
-        // jump to bootloader DFU
-        // 16k SRAM in address 0x2000 0000 - 0x2000 3FFF
-        //*((unsigned long *)0x20003FF0) = 0xDEADBEEF;
-        if(_force_stm32_dfu){
-          // Force STM32 bootloader DFU
-          bl_bkp_enable();
-          RTC->BKP0R = BL_BKP_SIGNATURE;
-          RTC->BKP1R = BL_BKP_REQ_STM32_DFU_MAGIC;     
-        } else {
-            // Force Open-LIFU bootloader DFU 
-          bl_bkp_enable();
-          RTC->BKP0R = BL_BKP_SIGNATURE;
-          RTC->BKP1R = BL_BKP_REQ_DFU_MAGIC;     
-        }
+        bl_bkp_enable();
+        RTC->BKP0R = BL_BKP_SIGNATURE;
+#ifdef BARE_METAL
+        // No bootloader: main() enters the STM32 ROM loader on the way back up.
+        RTC->BKP1R = APP_BKP_REQ_ROM_DFU_MAGIC;
+#else
+        // The secure bootloader's DFU, which takes signed images only.
+        RTC->BKP1R = BL_BKP_REQ_DFU_MAGIC;
+#endif
       }
 
       MX_USB_DEVICE_DeInit();

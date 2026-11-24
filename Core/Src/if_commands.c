@@ -25,13 +25,13 @@
 #include <time.h>    // For seeding random number generator
 
 extern bool _enter_dfu;
-extern bool _force_stm32_dfu;
 extern ADS8678__HandleTypeDef vmon_adc;
 extern MAX31875_Init_t temp_sensor_1;
 extern MAX31875_Init_t temp_sensor_2;
 extern FAN_Driver fan[2];
 
 static uint32_t id_words[3] = {0};
+static uint8_t sigchk_reply[1U + SIGCHK_HEADER_LEN];   // OW_CMD_SIGCHK
 static float ret_voltage = 0;
 static ADC_ChannelData_t vmon_adc_data;
 volatile float last_temperature1 = 0;
@@ -50,6 +50,59 @@ static void print_uart_packet(const UartPacket* packet) {
         DBG_PRINTF("0x%02X ", packet->data[i]);
     }
     DBG_PRINTF("\r\n");
+}
+
+/* OW_CMD_BL_VERSION: the installed bootloader's version, read without DFU
+ * (SR-021). Every bootloader generation (1.0.x, 1.1.x) has the USB product
+ * string "OW DFU " FW_VERSION in its flash (open-lifu-console-bl usbd_desc.c);
+ * the version is the [0-9A-Za-z.+-] run after the tag, at most 32 bytes.
+ * RDP1/WRP do not block CPU reads. The bootloader region is scanned once and
+ * the reply points into flash. Not found, or bare metal: empty (len 0). */
+#define BL_VERSION_TAG      "OW DFU "
+#define BL_VERSION_TAG_LEN  (sizeof(BL_VERSION_TAG) - 1U)
+#define BL_VERSION_MAX      32U
+
+#ifndef BARE_METAL
+static bool bl_version_char(uint8_t c)
+{
+	return (c >= (uint8_t)'0' && c <= (uint8_t)'9') || (c >= (uint8_t)'A' && c <= (uint8_t)'Z')
+	    || (c >= (uint8_t)'a' && c <= (uint8_t)'z') || c == (uint8_t)'.' || c == (uint8_t)'+'
+	    || c == (uint8_t)'-';
+}
+#endif
+
+static uint16_t bl_version(const uint8_t **text)
+{
+#ifdef BARE_METAL
+	*text = NULL;
+	return 0U;
+#else
+	static const uint8_t *found = NULL;
+	static uint16_t found_len = 0U;
+	static bool scanned = false;
+
+	if (!scanned) {
+		const uint8_t *flash = (const uint8_t *)BOOTLOADER_ADDRESS;
+		const uint32_t size = APPLICATION_ADDRESS - BOOTLOADER_ADDRESS;
+		for (uint32_t i = 0U; (found == NULL) && (i + BL_VERSION_TAG_LEN <= size); i++) {
+			if (flash[i] != (uint8_t)'O' || memcmp(&flash[i], BL_VERSION_TAG, BL_VERSION_TAG_LEN) != 0) {
+				continue;
+			}
+			const uint32_t start = i + BL_VERSION_TAG_LEN;
+			uint32_t n = 0U;
+			while (n < BL_VERSION_MAX && start + n < size && bl_version_char(flash[start + n])) {
+				n++;
+			}
+			if (n > 0U) {
+				found = &flash[start];
+				found_len = (uint16_t)n;
+			}
+		}
+		scanned = true;
+	}
+	*text = found;
+	return found_len;
+#endif
 }
 
 /* Parse and apply an OW_POWER_SET_RGB_FX payload (layout in common.h).
@@ -114,10 +167,9 @@ static void POWER_ProcessCommand(UartPacket *uartResp, UartPacket cmd)
 {
 	// STATUS, and HV on refused while an HV fault is latched (hv_monitor.h).
 	if (hv_monitor_process(uartResp, &cmd)) return;
-#ifdef FDA_MODE
-	// The HV setpoint comes from the selected preset (hv_presets.h).
+	// Presets, in every build; in FDA mode the HV setpoint comes only from the
+	// selected preset (hv_presets.h).
 	if (hv_presets_process(uartResp, &cmd)) return;
-#endif
 
 	switch (cmd.command)
 	{
@@ -160,6 +212,33 @@ static void POWER_ProcessCommand(UartPacket *uartResp, UartPacket cmd)
 			uartResp->data_len = 16;
 			uartResp->data = (uint8_t *)&id_words;
 			break;
+		case OW_CMD_SIGCHK:
+			// The host verifies the signature (SR-021): a slot build sends the
+			// signed header the bootloader checked at boot; a bare-metal build
+			// has none and says so.
+			uartResp->command = OW_CMD_SIGCHK;
+			uartResp->addr = cmd.addr;
+			uartResp->reserved = cmd.reserved;
+#ifdef BARE_METAL
+			sigchk_reply[0] = SIGCHK_BARE_METAL;
+			uartResp->data_len = 1U;
+#else
+			sigchk_reply[0] = SIGCHK_SLOT_IMAGE;
+			memcpy(&sigchk_reply[1], (const void *)APPLICATION_ADDRESS, SIGCHK_HEADER_LEN);
+			uartResp->data_len = sizeof(sigchk_reply);
+#endif
+			uartResp->data = sigchk_reply;
+			break;
+		case OW_CMD_BL_VERSION: {
+			// A read, allowed in every build including clinical (FDA_MODE).
+			const uint8_t *bl_text = NULL;
+			uartResp->command = OW_CMD_BL_VERSION;
+			uartResp->addr = cmd.addr;
+			uartResp->reserved = cmd.reserved;
+			uartResp->data_len = bl_version(&bl_text);
+			uartResp->data = (uint8_t *)bl_text;
+			break;
+		}
 		case OW_POWER_12V_ON:
 			uartResp->command = OW_POWER_12V_ON;
 			HAL_GPIO_WritePin(V12_ENABLE_GPIO_Port, V12_ENABLE_Pin, GPIO_PIN_SET);
@@ -295,77 +374,54 @@ static void POWER_ProcessCommand(UartPacket *uartResp, UartPacket cmd)
 			}
 
 			break;
-		case OW_POWER_GET_12VON:
-			uartResp->command = OW_POWER_GET_12VON;
-			if(get12VOnStatus()){
-				uartResp->reserved = 1;
-			}else{
-				uartResp->reserved = 0;
-			}
+		case OW_CMD_USR_CFG: {
+			// reserved == 0: READ
+			// reserved == 1: WRITE (cmd.data is JSON text)
+			const uint8_t *wire_buf = NULL;
+			uint16_t wire_len = 0;
 
-			break;
-		case OW_CMD_USR_CFG:
-            // reserved == 0: READ
-            // reserved == 1: WRITE (cmd.data is JSON text)
 			uartResp->id = cmd.id;
 			uartResp->command = OW_CMD_USR_CFG;
+
+			if (cmd.reserved == OW_USR_CFG_WRITE) {
 #ifdef FDA_MODE
-			// FDA mode: the user config is read-only; a service build writes it.
-			if (cmd.reserved == 1) {
-				uartResp->packet_type = OW_ERROR;
+				// User config is read-only in FDA mode; only a service build may write it.
 				uartResp->reserved = OW_CODE_FDA_REFUSED;
-				uartResp->data_len = 0;
-				break;
-			}
+				goto usr_cfg_error;
+#else
+				if (cmd.data == NULL || cmd.data_len == 0 ||
+				    lifu_cfg_wire_write(cmd.data, cmd.data_len) != HAL_OK) {
+					goto usr_cfg_error;
+				}
 #endif
-            if (cmd.reserved == 0) {
-                const uint8_t *wire_buf = NULL;
-                uint16_t wire_len = 0;
-                const uint16_t max_payload = (uint16_t)(DATA_MAX_SIZE);
-                if (lifu_cfg_wire_read(&wire_buf, &wire_len, max_payload) != HAL_OK || wire_buf == NULL) {
-                    uartResp->packet_type = OW_ERROR;
-                    uartResp->data_len = 0;
-                    uartResp->data = NULL;
-                    break;
-                }
+			} else if (cmd.reserved != OW_USR_CFG_READ) {
+				goto usr_cfg_error;
+			}
 
-                uartResp->data_len = wire_len;
-                uartResp->data = (uint8_t *)wire_buf;
-            }
-            else if (cmd.reserved == 1) {
-                if (cmd.data == NULL || cmd.data_len == 0) {
-                    uartResp->packet_type = OW_ERROR;
-                    uartResp->data_len = 0;
-                    uartResp->data = NULL;
-                    break;
-                }
+			// Both READ (full payload) and WRITE (header ACK) finish by reading the wire buffer.
+			if (lifu_cfg_wire_read(&wire_buf, &wire_len, (uint16_t)DATA_MAX_SIZE) != HAL_OK ||
+			    wire_buf == NULL) {
+				goto usr_cfg_error;
+			}
 
-                if (lifu_cfg_wire_write(cmd.data, cmd.data_len) != HAL_OK) {
-                    uartResp->packet_type = OW_ERROR;
-                    uartResp->data_len = 0;
-                    uartResp->data = NULL;
-                    break;
-                }
+			if (cmd.reserved == OW_USR_CFG_WRITE) {
+				if (wire_len < sizeof(lifu_cfg_wire_hdr_t)) {
+					goto usr_cfg_error;
+				}
+				uartResp->data_len = (uint16_t)sizeof(lifu_cfg_wire_hdr_t);
+			} else {
+				uartResp->data_len = wire_len;
+			}
 
-                // Return the updated header as an ACK payload.
-                const uint8_t *wire_buf = NULL;
-                uint16_t wire_len = 0;
-                const uint16_t max_payload = (uint16_t)(DATA_MAX_SIZE);
-                if (lifu_cfg_wire_read(&wire_buf, &wire_len, max_payload) != HAL_OK || wire_buf == NULL) {
-                    uartResp->packet_type = OW_ERROR;
-                    uartResp->data_len = 0;
-                    uartResp->data = NULL;
-                    break;
-                }
-                uartResp->data_len = (uint16_t)sizeof(lifu_cfg_wire_hdr_t);
-                uartResp->data = (uint8_t *)wire_buf;
-            }
-            else {
-                uartResp->packet_type = OW_ERROR;
-                uartResp->data_len = 0;
-                uartResp->data = NULL;
-            }
-            break;
+			uartResp->data = (uint8_t *)wire_buf;
+			break;
+
+		usr_cfg_error:
+			uartResp->packet_type = OW_ERROR;
+			uartResp->data_len = 0;
+			uartResp->data = NULL;
+			break;
+		}
 		case OW_CMD_NOP:
 			uartResp->command = OW_CMD_NOP;
 			break;
@@ -385,33 +441,36 @@ static void POWER_ProcessCommand(UartPacket *uartResp, UartPacket cmd)
 			break;
 		case OW_CMD_DFU: {
 			uartResp->command = OW_CMD_DFU;
-#ifdef FDA_MODE
-			// FDA mode: no DFU entry (SR-021). A +test image (FDA_TEST_IMAGE)
-			// still enters the signed bootloader's DFU, so a unit on the test
-			// presets can be updated over USB; neither enters the STM32 ROM
-			// loader (0x77), which takes unsigned images.
-#ifdef FDA_TEST_IMAGE
-			const bool dfu_refused = (cmd.reserved == 0x77);
+			// Where DFU goes is fixed by the build, not by the request:
+			//  - slot builds (research, clinical): the secure bootloader's DFU,
+			//    signed images only. They cannot reach the STM32 ROM loader,
+			//    which takes unsigned images, so the old ROM-loader request
+			//    (reserved 0x77) is refused.
+			//  - bare metal (developer builds, no bootloader): the ROM loader,
+			//    the only DFU there is (main.c).
+			// The clinical (FDA) build enters DFU like any slot build: its
+			// bootloader takes only images signed with the clinical key, and
+			// the clinical firmware updater updates it that way.
+#if defined(BARE_METAL)
+			const bool dfu_refused = false;
 #else
-			const bool dfu_refused = true;
+			const bool dfu_refused = (cmd.reserved == 0x77);
 #endif
 			if (dfu_refused) {
 				uartResp->packet_type = OW_ERROR;
+#ifdef FDA_MODE
 				uartResp->reserved = OW_CODE_FDA_REFUSED;
+#else
+				uartResp->reserved = OW_CODE_ERROR;
+#endif
 				uartResp->data_len = 0;
 				break;
 			}
-#endif
 			uartResp->addr = cmd.addr;
 			uartResp->reserved = cmd.reserved;
 			uartResp->data_len = 0;
 
 			_enter_dfu = true;
-#ifdef FDA_MODE
-			_force_stm32_dfu = false;   // 0x77 (the ROM loader) was refused above
-#else
-			_force_stm32_dfu = (cmd.reserved == 0x77);
-#endif
 			__HAL_TIM_CLEAR_FLAG(&htim17, TIM_FLAG_UPDATE);
 			__HAL_TIM_SET_COUNTER(&htim17, 0);
 

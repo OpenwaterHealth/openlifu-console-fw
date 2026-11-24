@@ -1,0 +1,135 @@
+{
+  "description": "Open-LIFU console application firmware for STM32F072 (Console Power PCB): HV supply control, calibration and rail monitoring, HV presets (FDA images), fans, temperature, RGB LEDs, ADS8678 ADC; binary command protocol over USB CDC. Runs from the secure bootloader's slot (0x08010400) and enters the bootloader's DFU on request.",
+  "mcu": "STM32F072RBHx (Arm Cortex-M0)",
+  "licenses": [
+    {
+      "license": {
+        "id": "Apache-2.0"
+      }
+    }
+  ],
+  "components": [
+    {
+      "type": "framework",
+      "name": "STM32Cube MCU Package for STM32F0 (FW_F0)",
+      "version": "1.12.0",
+      "supplier": {
+        "name": "STMicroelectronics"
+      },
+      "scope": "required",
+      "description": "STM32Cube package the HAL, CMSIS device files and middleware were generated from. The HAL / CMSIS versions actually in the tree are derived separately.",
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0"
+          }
+        }
+      ],
+      "purl": "pkg:github/STMicroelectronics/STM32CubeF0@v1.12.0",
+      "properties": [
+        {
+          "name": "openwater:evidence",
+          "value": "HAL v1.7.9, CMSIS Device F0 v2.3.8 and USB Device Library v2.11.6 are the versions STM32CubeF0 v1.12.0 pins (its submodule commits); the .ioc records FW_F0 V1.12.0. Updated 2026-11-16 from V1.11.6."
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "STM32 USB Device Library (Core + CDC class)",
+      "version": "2.11.6",
+      "supplier": {
+        "name": "STMicroelectronics"
+      },
+      "scope": "required",
+      "description": "USB device stack and CDC (virtual COM port) class carrying the host command protocol. Byte-identical to upstream v2.11.6, see Middlewares/ST/STM32_USB_Device_Library/LOCAL_CHANGES.md.",
+      "licenses": [
+        {
+          "license": {
+            "name": "SLA0044"
+          }
+        }
+      ],
+      "purl": "pkg:github/STMicroelectronics/stm32-mw-usb-device@v2.11.6",
+      "properties": [
+        {
+          "name": "openwater:evidence",
+          "value": "Core/ and Class/CDC/ diffed against upstream tag v2.11.6 on 2026-11-16; the version pinned by STM32CubeF0 v1.12.0."
+        },
+        {
+          "name": "openwater:security-note",
+          "value": "Updated 2026-11-16 from v2.5.3, which passed the host's wLength unbounded into fixed EP0 class buffers (CDC 512 B hcdc->data); fixed upstream in v2.8.0. Verified on the bench console with the updated bootloader and an app built against v2.11.6."
+        },
+        {
+          "name": "openwater:files",
+          "value": "Middlewares/ST/STM32_USB_Device_Library/Core/**/*, Middlewares/ST/STM32_USB_Device_Library/Class/**/*"
+        },
+        {
+          "name": "openwater:files-sha256",
+          "value": "0fbd7f1200b4cc6bf7f14c52388d736986c8ae7a0eb185871133922404c9d350"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "LwRB (lightweight ring buffer)",
+      "version": "2.0.0",
+      "supplier": {
+        "name": "Tilen Majerle"
+      },
+      "scope": "required",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "purl": "pkg:github/MaJerle/lwrb@v2.0.0",
+      "properties": [
+        {
+          "name": "openwater:evidence",
+          "value": "Core/Src/lwrb.c, Core/Inc/lwrb.h: 'Version: v2.0.0', Copyright (c) 2020 Tilen MAJERLE, MIT; compiled via CMakeLists.txt"
+        },
+        {
+          "name": "openwater:files",
+          "value": "Core/Src/lwrb.c, Core/Inc/lwrb.h"
+        },
+        {
+          "name": "openwater:files-sha256",
+          "value": "3ed385078be080ac5728641839f537b0af48d10420672380ddd4efacf3424f90"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "jsmn (JSON tokenizer)",
+      "supplier": {
+        "name": "Serge A. Zaitsev"
+      },
+      "scope": "required",
+      "description": "Minimal JSON tokenizer. A pre-1.0 two-file snapshot (jsmnerr_t API); upstream publishes no version macro, so no version is asserted.",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "purl": "pkg:github/zserge/jsmn",
+      "properties": [
+        {
+          "name": "openwater:evidence",
+          "value": "Core/Src/jsmn.c, Core/Inc/jsmn.h: Copyright (c) 2010 Serge A. Zaitsev, MIT; compiled via CMakeLists.txt"
+        },
+        {
+          "name": "openwater:files",
+          "value": "Core/Src/jsmn.c, Core/Inc/jsmn.h"
+        },
+        {
+          "name": "openwater:files-sha256",
+          "value": "7873a57d40463a9ef0ee10846180072e0e52f86d1e3d16a0eb5efff92656c954"
+        }
+      ]
+    }
+  ]
+}

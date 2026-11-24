@@ -17,6 +17,13 @@
 #define COMMAND_MAX_SIZE 2080
 #define DATA_MAX_SIZE 2048
 
+/* OW_CMD_SIGCHK reply payload: a status byte, then for a slot build the
+ * signed SBSFU header from the slot start. The host checks the header's
+ * ECDSA signature against a public key (openlifu-sdk check_signature). */
+#define SIGCHK_SLOT_IMAGE  0x00U   /* data[1..320]: the signed header */
+#define SIGCHK_BARE_METAL  0x01U   /* no bootloader, so no signed header */
+#define SIGCHK_HEADER_LEN  320U    /* sizeof(SE_FwRawHeaderTypeDef) */
+
 #ifndef FW_VERSION
 #define FW_VERSION "unknown"
 #endif
@@ -76,10 +83,12 @@ typedef enum {
 	OW_CMD_ECHO = 0x03,
 	OW_CMD_TOGGLE_LED = 0x04,
 	OW_CMD_HWID = 0x05,
+	OW_CMD_SIGCHK = 0x08,      // signature check: the signed header, or bare metal
 	OW_CMD_USR_CFG = 0x0A,
 	OW_CMD_DFU = 0x0D,
 	OW_CMD_NOP = 0x0E,
 	OW_CMD_RESET = 0x0F,
+	OW_CMD_BL_VERSION = 0x70,  // the bootloader version text (no NUL); empty if none
 } UstxGlobalCommands;
 
 typedef enum {
@@ -114,9 +123,12 @@ typedef enum {
 	OW_POWER_RAW_DAC = 0x41,
 	OW_POWER_HV_ENABLE = 0x42,
 	OW_POWER_SET_RGB_FX = 0x43,
-	OW_POWER_PRESET_GET = 0x44,     // FDA mode: reserved=0 -> the preset's HV entry
-	OW_POWER_PRESET_SELECT = 0x45,  // FDA mode: reserved=0, data=settings_crc u32 + transmitter
+	OW_POWER_PRESET_GET = 0x44,     // reserved=index -> that preset's HV entry (hv_presets.c)
+	OW_POWER_PRESET_SELECT = 0x45,  // reserved=index, data=settings_crc u32 + transmitter
 	                                //   sensitivity f32 (LE) -> voltage applied f32. No data deselects
+	OW_POWER_PRESET_INFO = 0x46,    // -> reserved=PRESET_INFO_*, data=the package header (320 B)
+	OW_POWER_PRESET_WRITE = 0x47,   // research/bare metal: data=offset u16 + bytes; FDA refuses
+	OW_POWER_PRESET_COMMIT = 0x48,  // research/bare metal: data=length u32 + CRC-32 u32; FDA refuses
 } UstxPowerCommands;
 
 /* OW_POWER_SET_RGB_FX payload (cmd.data, little-endian):
